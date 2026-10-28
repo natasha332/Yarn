@@ -47,7 +47,7 @@ export default function OnboardingForm() {
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 p-6">
       <div>
         <h1 className="font-display text-5xl font-bold leading-none">
-          G&apos;day. Let&apos;s set you up.
+          Hello. Let&apos;s set you up.
         </h1>
         <p className="mt-2 text-lg text-muted">Takes 20 seconds.</p>
       </div>
