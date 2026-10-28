@@ -40,8 +40,14 @@ export default function Home() {
         <WhoAmI />
       </Suspense>
       <Link
+        href="/capture"
+        className="grid h-28 w-28 place-items-center rounded-full bg-accent text-lg font-semibold text-accent-ink shadow-[0_0_0_10px_color-mix(in_srgb,var(--accent)_16%,transparent)]"
+      >
+        Talk
+      </Link>
+      <Link
         href="/jobs"
-        className="flex h-14 w-full max-w-xs items-center justify-center rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+        className="flex h-14 w-full max-w-xs items-center justify-center rounded-xl border border-line bg-surface text-lg font-semibold"
       >
         Jobs
       </Link>
