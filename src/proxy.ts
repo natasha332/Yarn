@@ -31,9 +31,13 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname === "/login";
+  const path = request.nextUrl.pathname;
+  const isLoginPage = path === "/login";
+  // pages a logged-out person is allowed to see
+  const isPublic =
+    isLoginPage || path === "/forgot-password" || path.startsWith("/auth/");
 
-  if (!user && !isLoginPage) {
+  if (!user && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (user && isLoginPage) {

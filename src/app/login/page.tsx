@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -88,6 +89,12 @@ export default function LoginPage() {
             className="h-14 rounded-xl border border-line bg-surface px-4 text-lg font-normal"
           />
         </label>
+
+        {mode === "signin" && (
+          <Link href="/forgot-password" className="-mt-2 self-end py-2 text-muted underline">
+            Forgot password?
+          </Link>
+        )}
 
         {error && (
           <p role="alert" className="text-variation">
