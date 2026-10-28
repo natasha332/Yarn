@@ -16,6 +16,7 @@ const MIME_TYPES = [
 
 type Phase = "idle" | "starting" | "recording" | "recorded";
 type SaveState = "idle" | "saving" | "saved" | "failed";
+type TranscribeState = "idle" | "working" | "done" | "failed";
 
 function extensionFor(mimeType: string) {
   if (mimeType.includes("mp4")) return "mp4";
@@ -42,6 +43,9 @@ export default function Recorder({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [transcribeState, setTranscribeState] = useState<TranscribeState>("idle");
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
   // What we need to remember so "Try again" never saves the same note twice.
   const blobRef = useRef<Blob | null>(null);
@@ -84,6 +88,9 @@ export default function Recorder({
     setAudioUrl(null);
     setSaveState("idle");
     setSaveError(null);
+    setTranscribeState("idle");
+    setTranscript(null);
+    setTranscribeError(null);
     blobRef.current = null;
     captureIdRef.current = null;
     uploadedPathRef.current = null;
@@ -177,6 +184,34 @@ export default function Recorder({
       return;
     }
     setSaveState("saved");
+    void transcribe();
+  }
+
+  // Ask the server to turn the saved recording into words.
+  async function transcribe() {
+    const id = captureIdRef.current;
+    if (!id) return;
+    setTranscribeState("working");
+    setTranscribeError(null);
+
+    try {
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captureId: id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      setTranscript(data.transcript ?? "");
+      setTranscribeState("done");
+    } catch (err) {
+      setTranscribeError(
+        err instanceof Error && err.message !== "Failed to fetch"
+          ? err.message
+          : "Couldn't reach Yarn. Check your signal and try again.",
+      );
+      setTranscribeState("failed");
+    }
   }
 
   function stop() {
@@ -191,7 +226,7 @@ export default function Recorder({
       <button
         type="button"
         onClick={recording ? stop : start}
-        disabled={phase === "starting" || saveState === "saving"}
+        disabled={phase === "starting" || saveState === "saving" || transcribeState === "working"}
         aria-label={recording ? "Stop recording" : "Start recording"}
         className={`grid h-[min(68vw,18rem)] w-[min(68vw,18rem)] place-items-center rounded-full bg-accent text-accent-ink shadow-[0_0_0_16px_color-mix(in_srgb,var(--accent)_16%,transparent)] transition-transform active:scale-95 disabled:opacity-60 ${
           recording ? "mic-live" : ""
@@ -269,6 +304,38 @@ export default function Recorder({
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {saveState === "saved" && transcribeState === "working" && (
+        <p className="text-muted">Writing it down…</p>
+      )}
+
+      {transcribeState === "done" && (
+        <div className="flex w-full flex-col gap-2 rounded-xl border border-line bg-surface p-4">
+          <span className="font-mono text-xs uppercase tracking-widest text-muted">
+            What you said
+          </span>
+          {transcript ? (
+            <p className="italic">{transcript}</p>
+          ) : (
+            <p className="text-muted">I didn&apos;t catch anything. Try again a bit closer to the phone.</p>
+          )}
+        </div>
+      )}
+
+      {transcribeState === "failed" && (
+        <div className="flex w-full flex-col gap-2">
+          <p role="alert" className="text-center text-variation">
+            {transcribeError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void transcribe()}
+            className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+          >
+            Try again
+          </button>
         </div>
       )}
     </div>
