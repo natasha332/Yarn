@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getMyBusiness } from "@/lib/business";
 
 async function logOut() {
   "use server";
@@ -10,13 +11,20 @@ async function logOut() {
 }
 
 async function WhoAmI() {
+  const business = await getMyBusiness();
+  // First time here? Go and set up the business.
+  if (!business) redirect("/onboarding");
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   return (
-    <p className="font-mono text-sm text-muted">Logged in as {user?.email}</p>
+    <>
+      <p className="text-xl font-semibold">{business.name}</p>
+      <p className="font-mono text-sm text-muted">Logged in as {user?.email}</p>
+    </>
   );
 }
 
