@@ -30,7 +30,7 @@ Natasha is building this herself with Claude Code and is not a professional deve
 - **businesses**: id, name, timezone, morning_email_time, wrapup_mode, notify_channel (email, push, both), push_subscription, google_calendar_id, plan (base, accounting, quoting), trial_ends_at
 - **users**: id, business_id, name, email, role (owner only for the MVP)
 - **clients**: id, business_id, name, phone, email, address, aliases
-- **jobs**: id, business_id, client_id, name, address, status (quoted, booked, in_progress, done)
+- **jobs**: id, business_id, client_id, name, address, status (consultation, quoted, booked, in_progress, done; shown as "Consultation", "Quoted", "Booked job", "Job in progress", "Done")
 - **captures**: id, business_id, user_id, audio_url, transcript, created_at, status (recorded, transcribed, sorted, failed)
 - **items**: id, capture_id, business_id, type (calendar, todo, followup, note, invoice, quote, variation), title, client_id, job_id, due_date, start_time, end_time, details (JSON), status (pending, confirmed, discarded, done), external_id
 
