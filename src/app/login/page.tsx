@@ -34,7 +34,16 @@ export default function LoginPage() {
       }
     } else {
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) {
+      // Supabase hides "already registered" to protect privacy: it returns a user
+      // with no identities (or an explicit error, depending on settings).
+      const alreadyHasAccount =
+        error?.message.toLowerCase().includes("already registered") ||
+        (data.user && data.user.identities?.length === 0);
+
+      if (alreadyHasAccount) {
+        setMode("signin");
+        setMessage("Looks like you already have an account. Log in with your password.");
+      } else if (error) {
         setError(error.message);
       } else if (data.session) {
         router.replace("/");
