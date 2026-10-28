@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -38,6 +39,12 @@ export default function Home() {
       <Suspense fallback={<p className="font-mono text-sm text-muted">…</p>}>
         <WhoAmI />
       </Suspense>
+      <Link
+        href="/clients"
+        className="flex h-14 w-full max-w-xs items-center justify-center rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+      >
+        Clients
+      </Link>
       <form action={logOut}>
         <button className="h-14 rounded-xl border border-line bg-surface px-8 text-lg font-semibold">
           Log out

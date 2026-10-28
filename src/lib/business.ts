@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 // The business the logged-in person belongs to, or null if they haven't set one up yet.
@@ -9,4 +10,11 @@ export async function getMyBusiness() {
     .select("id, name, timezone")
     .maybeSingle();
   return data;
+}
+
+// Same as getMyBusiness, but sends people who haven't set up yet to onboarding.
+export async function requireBusiness() {
+  const business = await getMyBusiness();
+  if (!business) redirect("/onboarding");
+  return business;
 }
