@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
 const MAX_SECONDS = 5 * 60;
@@ -14,6 +15,13 @@ const MIME_TYPES = [
 ];
 
 type Phase = "idle" | "starting" | "recording" | "recorded";
+type SaveState = "idle" | "saving" | "saved" | "failed";
+
+function extensionFor(mimeType: string) {
+  if (mimeType.includes("mp4")) return "mp4";
+  if (mimeType.includes("ogg")) return "ogg";
+  return "webm";
+}
 
 function formatTime(total: number) {
   const m = Math.floor(total / 60);
@@ -21,11 +29,24 @@ function formatTime(total: number) {
   return `${m}:${s}`;
 }
 
-export default function Recorder() {
+export default function Recorder({
+  businessId,
+  userId,
+}: {
+  businessId: string;
+  userId: string;
+}) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // What we need to remember so "Try again" never saves the same note twice.
+  const blobRef = useRef<Blob | null>(null);
+  const captureIdRef = useRef<string | null>(null);
+  const uploadedPathRef = useRef<string | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -61,6 +82,11 @@ export default function Recorder() {
   async function start() {
     setError(null);
     setAudioUrl(null);
+    setSaveState("idle");
+    setSaveError(null);
+    blobRef.current = null;
+    captureIdRef.current = null;
+    uploadedPathRef.current = null;
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setError("This browser can't record audio. Try Safari on iPhone or Chrome on Android.");
@@ -86,6 +112,8 @@ export default function Recorder() {
         releaseMic();
         setAudioUrl(URL.createObjectURL(blob));
         setPhase("recorded");
+        blobRef.current = blob;
+        void save();
       };
 
       recorder.start();
@@ -109,6 +137,48 @@ export default function Recorder() {
     }
   }
 
+  // Upload the audio to private storage, then record it in the captures table.
+  async function save() {
+    const blob = blobRef.current;
+    if (!blob) return;
+    setSaveState("saving");
+    setSaveError(null);
+
+    const supabase = createClient();
+    const id = (captureIdRef.current ??= crypto.randomUUID());
+    const type = blob.type.split(";")[0] || "audio/webm";
+
+    // Step 1: the audio file (skipped on a retry if it already went up).
+    if (!uploadedPathRef.current) {
+      const path = `${businessId}/${id}.${extensionFor(type)}`;
+      const { error } = await supabase.storage
+        .from("audio")
+        .upload(path, blob, { contentType: type });
+      if (error) {
+        setSaveState("failed");
+        setSaveError("Couldn't upload the recording. Check your signal and try again.");
+        return;
+      }
+      uploadedPathRef.current = path;
+    }
+
+    // Step 2: the capture row that points at it.
+    const { error } = await supabase.from("captures").insert({
+      id,
+      business_id: businessId,
+      user_id: userId,
+      audio_url: uploadedPathRef.current,
+      status: "recorded",
+    });
+    // 23505 means a previous try already saved it and only the reply got lost.
+    if (error && error.code !== "23505") {
+      setSaveState("failed");
+      setSaveError("The recording uploaded but couldn't be saved. Try again.");
+      return;
+    }
+    setSaveState("saved");
+  }
+
   function stop() {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
@@ -117,24 +187,24 @@ export default function Recorder() {
   const recording = phase === "recording";
 
   return (
-    <div className="flex flex-col items-center gap-5 pt-2">
+    <div className="flex flex-1 flex-col items-center justify-center gap-6 py-4">
       <button
         type="button"
         onClick={recording ? stop : start}
-        disabled={phase === "starting"}
+        disabled={phase === "starting" || saveState === "saving"}
         aria-label={recording ? "Stop recording" : "Start recording"}
-        className={`grid h-28 w-28 place-items-center rounded-full bg-accent text-accent-ink shadow-[0_0_0_10px_color-mix(in_srgb,var(--accent)_16%,transparent)] transition-transform active:scale-95 disabled:opacity-60 ${
+        className={`grid h-[min(68vw,18rem)] w-[min(68vw,18rem)] place-items-center rounded-full bg-accent text-accent-ink shadow-[0_0_0_16px_color-mix(in_srgb,var(--accent)_16%,transparent)] transition-transform active:scale-95 disabled:opacity-60 ${
           recording ? "mic-live" : ""
         }`}
       >
         {recording ? (
-          <svg viewBox="0 0 24 24" className="h-11 w-11" fill="currentColor" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-[38%] w-[38%]" fill="currentColor" aria-hidden="true">
             <rect x="6" y="6" width="12" height="12" rx="2" />
           </svg>
         ) : (
           <svg
             viewBox="0 0 24 24"
-            className="h-11 w-11"
+            className="h-[38%] w-[38%]"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -165,7 +235,7 @@ export default function Recorder() {
       ) : phase === "recorded" ? (
         <p className="text-muted">Got it. Tap to talk again.</p>
       ) : (
-        <p className="text-muted">Tap to talk.</p>
+        <p className="font-display text-3xl font-bold">Tap to talk</p>
       )}
 
       {error && (
@@ -181,8 +251,24 @@ export default function Recorder() {
           </span>
           <audio controls src={audioUrl} className="w-full" />
           <p className="text-sm text-muted">
-            Play it back to check it sounds right. It isn&apos;t saved anywhere yet.
+            Play it back to check it sounds right.
           </p>
+          {saveState === "saving" && <p className="text-muted">Saving…</p>}
+          {saveState === "saved" && <p className="text-invoice">Saved.</p>}
+          {saveState === "failed" && (
+            <>
+              <p role="alert" className="text-variation">
+                {saveError}
+              </p>
+              <button
+                type="button"
+                onClick={() => void save()}
+                className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+              >
+                Try again
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

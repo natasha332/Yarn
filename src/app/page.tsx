@@ -30,6 +30,20 @@ async function WhoAmI() {
   );
 }
 
+// The recorder needs to know whose business and login it is saving for.
+async function RecorderGate() {
+  const business = await getMyBusiness();
+  if (!business) redirect("/onboarding");
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  return <Recorder businessId={business.id} userId={user.id} />;
+}
+
 export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-8 p-4">
@@ -37,7 +51,15 @@ export default function Home() {
         yarn<span className="text-accent">.</span>
       </h1>
 
-      <Recorder />
+      <Suspense
+        fallback={
+          <div className="flex flex-1 items-center justify-center">
+            <div className="h-[min(68vw,18rem)] w-[min(68vw,18rem)] rounded-full bg-accent opacity-40" />
+          </div>
+        }
+      >
+        <RecorderGate />
+      </Suspense>
 
       <nav className="flex flex-col gap-3">
         <Link

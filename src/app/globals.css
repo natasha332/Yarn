@@ -82,7 +82,7 @@ select:focus-visible {
 /* Capture screen: the mic pulses and the bars dance while recording */
 @keyframes mic-pulse {
   50% {
-    box-shadow: 0 0 0 22px color-mix(in srgb, var(--accent) 8%, transparent);
+    box-shadow: 0 0 0 36px color-mix(in srgb, var(--accent) 8%, transparent);
   }
 }
 @keyframes wave {
