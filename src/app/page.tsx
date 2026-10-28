@@ -40,8 +40,14 @@ export default function Home() {
         <WhoAmI />
       </Suspense>
       <Link
-        href="/clients"
+        href="/jobs"
         className="flex h-14 w-full max-w-xs items-center justify-center rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+      >
+        Jobs
+      </Link>
+      <Link
+        href="/clients"
+        className="flex h-14 w-full max-w-xs items-center justify-center rounded-xl border border-line bg-surface text-lg font-semibold"
       >
         Clients
       </Link>
