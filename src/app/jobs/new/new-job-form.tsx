@@ -25,7 +25,7 @@ export default function NewJobForm({ clients }: { clients: ClientOption[] }) {
   const [aliases, setAliases] = useState("");
 
   const [jobName, setJobName] = useState("");
-  const [status, setStatus] = useState("quoted");
+  const [status, setStatus] = useState("consultation");
   const [sameAddress, setSameAddress] = useState(true);
   const [jobAddressOwn, setJobAddressOwn] = useState("");
 

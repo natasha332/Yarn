@@ -1,7 +1,8 @@
 export const JOB_STATUSES = [
+  { value: "consultation", label: "Consultation" },
   { value: "quoted", label: "Quoted" },
-  { value: "booked", label: "Booked" },
-  { value: "in_progress", label: "In progress" },
+  { value: "booked", label: "Booked job" },
+  { value: "in_progress", label: "Job in progress" },
   { value: "done", label: "Done" },
 ] as const;
 
@@ -9,6 +10,7 @@ export type JobStatus = (typeof JOB_STATUSES)[number]["value"];
 
 // full class names written out so Tailwind can see them
 export const STATUS_TEXT_CLASS: Record<string, string> = {
+  consultation: "text-followup",
   quoted: "text-quote",
   booked: "text-cal",
   in_progress: "text-todo",
