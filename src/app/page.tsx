@@ -7,6 +7,7 @@ import LogOutButton from "./log-out-button";
 import PendingNotes from "./pending-notes";
 import Recorder from "./recorder";
 import RecentNotes from "./recent-notes";
+import ToCheck from "./to-check";
 
 async function logOut() {
   "use server";
@@ -67,6 +68,10 @@ export default function Home() {
         }
       >
         <RecorderGate />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <ToCheck />
       </Suspense>
 
       <Suspense fallback={null}>

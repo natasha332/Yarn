@@ -21,18 +21,34 @@ export const CARD_TEXT_CLASS: Record<string, string> = {
   variation: "text-variation",
 };
 
-export type CardRow = {
+export type CardDetails = {
+  address?: string | null;
+  notes?: string | null;
+  job_status?: string | null;
+  belongs_to_card?: number | null;
+  new_client?: {
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    nicknames?: string[];
+  } | null;
+  client_options?: { id: string; name: string }[];
+};
+
+// A card waiting on the home page, as the screen needs it.
+export type PendingCard = {
   id: string;
   type: string;
   title: string;
+  client_id: string | null;
+  client_name: string | null;
   due_date: string | null;
   start_time: string | null;
   end_time: string | null;
-  details: {
-    address?: string | null;
-    notes?: string | null;
-    new_client?: { name: string } | null;
-    client_options?: { id: string; name: string }[];
-  } | null;
-  status: string;
+  details: CardDetails;
+  position: number;
 };
+
+// All the cards that came from one voice note.
+export type ToCheckGroup = { key: string; when: string; cards: PendingCard[] };

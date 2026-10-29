@@ -8,8 +8,6 @@ import {
   queueChanged,
   type PendingNote,
 } from "@/lib/offline-queue";
-import { CARD_LABEL, CARD_TEXT_CLASS, type CardRow } from "@/lib/cards";
-import { formatClock, formatDay } from "@/lib/format";
 import { syncNote } from "@/lib/sync";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
@@ -55,7 +53,7 @@ export default function Recorder({
   const [transcript, setTranscript] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
   const [sortState, setSortState] = useState<SortState>("idle");
-  const [cards, setCards] = useState<CardRow[]>([]);
+  const [cards, setCards] = useState<{ id: string }[]>([]);
   const [sortError, setSortError] = useState<string | null>(null);
 
   // The note being saved. It's kept on the phone first, so "Try again" never saves it twice.
@@ -391,48 +389,10 @@ export default function Recorder({
       )}
 
       {sortState === "done" && cards.length > 0 && (
-        <div className="flex w-full flex-col gap-3">
-          <p className="font-semibold text-muted">
-            Found {cards.length} {cards.length === 1 ? "thing" : "things"}:
-          </p>
-          {cards.map((c) => (
-            <div
-              key={c.id}
-              className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-4"
-            >
-              <span
-                className={`text-xs font-bold uppercase tracking-wide ${CARD_TEXT_CLASS[c.type] ?? ""}`}
-              >
-                {CARD_LABEL[c.type] ?? c.type}
-              </span>
-              <span className="text-lg font-semibold">{c.title}</span>
-              {(c.due_date || c.start_time) && (
-                <span className="font-mono text-sm text-muted">
-                  {[
-                    c.due_date && formatDay(c.due_date),
-                    c.start_time && formatClock(c.start_time),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              )}
-              {c.details?.new_client?.name && (
-                <span className="text-muted">
-                  Client: {c.details.new_client.name} (new)
-                </span>
-              )}
-              {c.details?.address && (
-                <span className="text-muted">{c.details.address}</span>
-              )}
-              {!!c.details?.client_options?.length && (
-                <span className="text-muted">
-                  Which client?{" "}
-                  {c.details.client_options.map((o) => o.name).join(" or ")}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        <p className="text-center font-semibold">
+          Found {cards.length} {cards.length === 1 ? "thing" : "things"}. Check{" "}
+          {cards.length === 1 ? "it" : "them"} below.
+        </p>
       )}
 
       {sortState === "failed" && (
