@@ -61,19 +61,40 @@ export async function POST(request: NextRequest) {
   form.append("prompt", prompt);
 
   const base = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-  let text: string;
+  let res: Response;
   try {
-    const res = await fetch(`${base}/audio/transcriptions`, {
+    res = await fetch(`${base}/audio/transcriptions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}` },
       body: form,
     });
-    if (!res.ok) throw new Error(`OpenAI said ${res.status}`);
-    text = String((await res.json()).text ?? "").trim();
-  } catch {
+  } catch (err) {
+    console.error("transcribe: couldn't reach OpenAI", err);
     await markFailed();
-    return fail("The transcriber didn't answer. Try again.", 502);
+    return fail("Couldn't reach OpenAI. Try again in a moment.", 502);
   }
+
+  if (!res.ok) {
+    // Read what OpenAI said so the real reason shows up, in our logs and on screen.
+    const detail = await res.json().catch(() => null);
+    const code: string | undefined = detail?.error?.code;
+    const message: string | undefined = detail?.error?.message;
+    console.error("transcribe: OpenAI error", res.status, code, message);
+    await markFailed();
+
+    if (res.status === 401) {
+      return fail("OpenAI rejected the key. Check OPENAI_API_KEY in Netlify.", 502);
+    }
+    if (res.status === 429 && code === "insufficient_quota") {
+      return fail("The OpenAI account has no credit. Add some under Billing at platform.openai.com.", 502);
+    }
+    if (res.status === 429) {
+      return fail("OpenAI is busy right now. Try again in a moment.", 502);
+    }
+    return fail(`OpenAI said no (${res.status}): ${message ?? "no reason given"}`, 502);
+  }
+
+  const text = String((await res.json().catch(() => ({}))).text ?? "").trim();
 
   const { error: saveError } = await supabase
     .from("captures")
