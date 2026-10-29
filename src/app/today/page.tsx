@@ -166,6 +166,8 @@ async function TodayContent() {
                       until {formatClock(r.end_time.slice(0, 5))}
                     </span>
                   )}
+                </div>
+                <div className="col-span-2">
                   <BookingActions
                     id={r.id}
                     title={r.title}
@@ -261,6 +263,8 @@ async function TodayContent() {
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold leading-snug">{r.title}</span>
                   {who(r) && <span className="text-muted">{who(r)}</span>}
+                </div>
+                <div className="col-span-2">
                   <BookingActions
                     id={r.id}
                     title={r.title}

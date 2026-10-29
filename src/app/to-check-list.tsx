@@ -15,7 +15,7 @@ import { formatClock, formatDay, formatWhen } from "@/lib/format";
 import { JOB_STATUSES, statusLabel } from "@/lib/jobs";
 
 const inputClass =
-  "h-12 rounded-xl border border-line bg-bg px-3 text-base font-normal";
+  "h-12 w-full min-w-0 rounded-xl border border-line bg-bg px-3 text-base font-normal";
 const bigButton = "h-12 rounded-xl px-4 font-semibold disabled:opacity-50";
 
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : "");
@@ -533,8 +533,8 @@ function EditCard({
       )}
 
       {isCalendar && (
-        <div className="flex gap-3">
-          <label className="flex flex-1 flex-col gap-1 font-semibold">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex min-w-0 flex-col gap-1 font-semibold">
             Starts
             <input
               type="time"
@@ -543,7 +543,7 @@ function EditCard({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-1 flex-col gap-1 font-semibold">
+          <label className="flex min-w-0 flex-col gap-1 font-semibold">
             Ends
             <input
               type="time"

@@ -94,8 +94,8 @@ export default function BookingActions({
             className={inputClass}
           />
         </label>
-        <div className="flex gap-3">
-          <label className="flex flex-1 flex-col gap-1 text-sm font-semibold">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold">
             Starts
             <input
               type="time"
@@ -104,7 +104,7 @@ export default function BookingActions({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-1 flex-col gap-1 text-sm font-semibold">
+          <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold">
             Ends
             <input
               type="time"
