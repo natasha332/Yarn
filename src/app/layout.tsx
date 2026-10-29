@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Barlow, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import BottomNav from "./bottom-nav";
 import RegisterServiceWorker from "./register-sw";
 
 const barlow = Barlow({
@@ -29,6 +30,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#eef0ee" },
     { media: "(prefers-color-scheme: dark)", color: "#111517" },
@@ -43,6 +45,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         {children}
+        <Suspense fallback={null}>
+          <BottomNav />
+        </Suspense>
         <Suspense fallback={null}>
           <RegisterServiceWorker />
         </Suspense>

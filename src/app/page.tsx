@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -77,21 +76,6 @@ export default function Home() {
       <Suspense fallback={null}>
         <RecentNotes />
       </Suspense>
-
-      <nav className="flex flex-col gap-3">
-        <Link
-          href="/jobs"
-          className="flex h-14 items-center justify-center rounded-xl border border-line bg-surface text-lg font-semibold"
-        >
-          Jobs
-        </Link>
-        <Link
-          href="/clients"
-          className="flex h-14 items-center justify-center rounded-xl border border-line bg-surface text-lg font-semibold"
-        >
-          Clients
-        </Link>
-      </nav>
 
       <div className="mt-auto flex flex-col items-center gap-3 pt-4">
         <Suspense fallback={<p className="font-mono text-xs text-muted">…</p>}>

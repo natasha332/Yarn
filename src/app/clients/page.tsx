@@ -12,7 +12,11 @@ async function ClientList() {
     .order("name");
 
   if (error) {
-    return <p role="alert" className="text-variation">{error.message}</p>;
+    return (
+      <p role="alert" className="text-variation">
+        {error.message}
+      </p>
+    );
   }
   if (!clients?.length) {
     return (
@@ -26,7 +30,10 @@ async function ClientList() {
     <ul className="overflow-hidden rounded-xl border border-line bg-surface">
       {clients.map((c) => (
         <li key={c.id} className="border-t border-line first:border-t-0">
-          <Link href={`/clients/${c.id}`} className="flex min-h-16 flex-col justify-center px-4 py-3">
+          <Link
+            href={`/clients/${c.id}`}
+            className="flex min-h-16 flex-col justify-center px-4 py-3"
+          >
             <span className="text-lg font-semibold">{c.name}</span>
             {(c.phone || c.address) && (
               <span className="text-muted">
@@ -43,9 +50,6 @@ async function ClientList() {
 export default function ClientsPage() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4">
-      <Link href="/" className="flex h-12 items-center text-muted underline">
-        ← Home
-      </Link>
       <h1 className="font-display text-5xl font-bold leading-none">Clients</h1>
       <Link
         href="/clients/new"

@@ -13,7 +13,11 @@ async function JobList() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return <p role="alert" className="text-variation">{error.message}</p>;
+    return (
+      <p role="alert" className="text-variation">
+        {error.message}
+      </p>
+    );
   }
   if (!jobs?.length) {
     return (
@@ -29,10 +33,15 @@ async function JobList() {
         const client = Array.isArray(j.clients) ? j.clients[0] : j.clients;
         return (
           <li key={j.id} className="border-t border-line first:border-t-0">
-            <Link href={`/jobs/${j.id}`} className="flex min-h-16 flex-col justify-center gap-0.5 px-4 py-3">
+            <Link
+              href={`/jobs/${j.id}`}
+              className="flex min-h-16 flex-col justify-center gap-0.5 px-4 py-3"
+            >
               <span className="flex items-baseline justify-between gap-3">
                 <span className="text-lg font-semibold">{j.name}</span>
-                <span className={`shrink-0 text-xs font-bold uppercase tracking-wide ${STATUS_TEXT_CLASS[j.status] ?? ""}`}>
+                <span
+                  className={`shrink-0 text-xs font-bold uppercase tracking-wide ${STATUS_TEXT_CLASS[j.status] ?? ""}`}
+                >
                   {statusLabel(j.status)}
                 </span>
               </span>
@@ -50,9 +59,6 @@ async function JobList() {
 export default function JobsPage() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4">
-      <Link href="/" className="flex h-12 items-center text-muted underline">
-        ← Home
-      </Link>
       <h1 className="font-display text-5xl font-bold leading-none">Jobs</h1>
       <Link
         href="/jobs/new"

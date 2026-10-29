@@ -47,3 +47,35 @@ export function formatClock(time: string) {
   const hour = h % 12 === 0 ? 12 : h % 12;
   return `${hour}:${String(m).padStart(2, "0")}${h < 12 ? "am" : "pm"}`;
 }
+
+// A moment's date in the business's own timezone, as "2026-11-03".
+export function dateIn(timeZone: string, moment: Date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(moment);
+}
+
+// Today's date in the business's own timezone.
+export function todayIn(timeZone: string) {
+  return dateIn(timeZone);
+}
+
+// "2026-11-03" plus 4 days is "2026-11-07". Plain calendar maths.
+export function addDays(dateString: string, days: number) {
+  const [y, m, d] = dateString.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+// "2026-11-03" -> "Tuesday 3 November"
+export function formatLongDay(dateString: string) {
+  const [y, m, d] = dateString.split("-").map(Number);
+  const p = parts(
+    new Date(Date.UTC(y, m - 1, d)),
+    { weekday: "long", day: "numeric", month: "long" },
+    "UTC",
+  );
+  return `${p.weekday} ${p.day} ${p.month}`;
+}
