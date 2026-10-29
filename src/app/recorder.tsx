@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  NOTE_SYNCED,
+  putPending,
+  queueChanged,
+  type PendingNote,
+} from "@/lib/offline-queue";
+import { syncNote } from "@/lib/sync";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
 const MAX_SECONDS = 5 * 60;
@@ -16,14 +22,10 @@ const MIME_TYPES = [
 ];
 
 type Phase = "idle" | "starting" | "recording" | "recorded";
-type SaveState = "idle" | "saving" | "saved" | "failed";
+type SaveState = "idle" | "saving" | "saved" | "waiting";
 type TranscribeState = "idle" | "working" | "done" | "failed";
 
-function extensionFor(mimeType: string) {
-  if (mimeType.includes("mp4")) return "mp4";
-  if (mimeType.includes("ogg")) return "ogg";
-  return "webm";
-}
+const nowMs = () => Date.now();
 
 function formatTime(total: number) {
   const m = Math.floor(total / 60);
@@ -45,14 +47,13 @@ export default function Recorder({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [transcribeState, setTranscribeState] = useState<TranscribeState>("idle");
+  const [transcribeState, setTranscribeState] =
+    useState<TranscribeState>("idle");
   const [transcript, setTranscript] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
 
-  // What we need to remember so "Try again" never saves the same note twice.
-  const blobRef = useRef<Blob | null>(null);
-  const captureIdRef = useRef<string | null>(null);
-  const uploadedPathRef = useRef<string | null>(null);
+  // The note being saved. It's kept on the phone first, so "Try again" never saves it twice.
+  const noteRef = useRef<PendingNote | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -93,12 +94,15 @@ export default function Recorder({
     setTranscribeState("idle");
     setTranscript(null);
     setTranscribeError(null);
-    blobRef.current = null;
-    captureIdRef.current = null;
-    uploadedPathRef.current = null;
+    noteRef.current = null;
 
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setError("This browser can't record audio. Try Safari on iPhone or Chrome on Android.");
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setError(
+        "This browser can't record audio. Try Safari on iPhone or Chrome on Android.",
+      );
       return;
     }
 
@@ -108,7 +112,10 @@ export default function Recorder({
       streamRef.current = stream;
 
       const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
       recorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -121,23 +128,31 @@ export default function Recorder({
         releaseMic();
         setAudioUrl(URL.createObjectURL(blob));
         setPhase("recorded");
-        blobRef.current = blob;
-        void save();
+        noteRef.current = {
+          id: crypto.randomUUID(),
+          businessId,
+          userId,
+          blob,
+          mimeType: blob.type,
+          createdAt: new Date().toISOString(),
+        };
+        void save(true);
       };
 
       recorder.start();
-      const startedAt = Date.now();
+      const startedAt = nowMs();
       setSeconds(0);
       setPhase("recording");
       timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        const elapsed = Math.floor((nowMs() - startedAt) / 1000);
         setSeconds(elapsed);
         if (elapsed >= MAX_SECONDS) stop();
       }, 500);
     } catch (err) {
       releaseMic();
       setPhase("idle");
-      const denied = err instanceof DOMException && err.name === "NotAllowedError";
+      const denied =
+        err instanceof DOMException && err.name === "NotAllowedError";
       setError(
         denied
           ? "Yarn needs the microphone. Allow it in your browser settings, then tap the button again."
@@ -146,52 +161,34 @@ export default function Recorder({
     }
   }
 
-  // Upload the audio to private storage, then record it in the captures table.
-  async function save() {
-    const blob = blobRef.current;
-    if (!blob) return;
+  // Keep the note on the phone first, then try to send it up. With no signal it simply waits
+  // on the phone, and Yarn uploads it by itself when the signal is back.
+  async function save(first = false) {
+    const note = noteRef.current;
+    if (!note) return;
     setSaveState("saving");
     setSaveError(null);
 
-    const supabase = createClient();
-    const id = (captureIdRef.current ??= crypto.randomUUID());
-    const type = blob.type.split(";")[0] || "audio/webm";
+    if (first) await putPending(note).catch(() => {}); // best effort: some browsers block this
 
-    // Step 1: the audio file (skipped on a retry if it already went up).
-    if (!uploadedPathRef.current) {
-      const path = `${businessId}/${id}.${extensionFor(type)}`;
-      const { error } = await supabase.storage
-        .from("audio")
-        .upload(path, blob, { contentType: type });
-      if (error) {
-        setSaveState("failed");
-        setSaveError("Couldn't upload the recording. Check your signal and try again.");
-        return;
-      }
-      uploadedPathRef.current = path;
+    const result = await syncNote(note);
+    if (result.ok) {
+      setSaveState("saved");
+      void transcribe();
+    } else if (result.reason !== "busy") {
+      setSaveState("waiting");
+      setSaveError(
+        result.reason === "offline"
+          ? "No signal right now. Your note is safe on your phone and will upload by itself when you're back online."
+          : "Couldn't upload it just now. Your note is safe on your phone and Yarn will keep trying.",
+      );
+      queueChanged();
     }
-
-    // Step 2: the capture row that points at it.
-    const { error } = await supabase.from("captures").insert({
-      id,
-      business_id: businessId,
-      user_id: userId,
-      audio_url: uploadedPathRef.current,
-      status: "recorded",
-    });
-    // 23505 means a previous try already saved it and only the reply got lost.
-    if (error && error.code !== "23505") {
-      setSaveState("failed");
-      setSaveError("The recording uploaded but couldn't be saved. Try again.");
-      return;
-    }
-    setSaveState("saved");
-    void transcribe();
   }
 
   // Ask the server to turn the saved recording into words.
-  async function transcribe() {
-    const id = captureIdRef.current;
+  const transcribe = useCallback(async () => {
+    const id = noteRef.current?.id;
     if (!id) return;
     setTranscribeState("working");
     setTranscribeError(null);
@@ -216,7 +213,21 @@ export default function Recorder({
       setTranscribeState("failed");
       router.refresh();
     }
-  }
+  }, [router]);
+
+  // The note on screen was waiting on the phone and has just gone up: carry on from here.
+  useEffect(() => {
+    function onSynced(e: Event) {
+      const detail = (e as CustomEvent<{ id: string; handled: boolean }>)
+        .detail;
+      if (detail.id !== noteRef.current?.id) return;
+      detail.handled = true;
+      setSaveState("saved");
+      void transcribe();
+    }
+    window.addEventListener(NOTE_SYNCED, onSynced);
+    return () => window.removeEventListener(NOTE_SYNCED, onSynced);
+  }, [transcribe]);
 
   function stop() {
     const recorder = recorderRef.current;
@@ -230,14 +241,23 @@ export default function Recorder({
       <button
         type="button"
         onClick={recording ? stop : start}
-        disabled={phase === "starting" || saveState === "saving" || transcribeState === "working"}
+        disabled={
+          phase === "starting" ||
+          saveState === "saving" ||
+          transcribeState === "working"
+        }
         aria-label={recording ? "Stop recording" : "Start recording"}
         className={`grid h-[min(68vw,18rem)] w-[min(68vw,18rem)] place-items-center rounded-full bg-accent text-accent-ink shadow-[0_0_0_16px_color-mix(in_srgb,var(--accent)_16%,transparent)] transition-transform active:scale-95 disabled:opacity-60 ${
           recording ? "mic-live" : ""
         }`}
       >
         {recording ? (
-          <svg viewBox="0 0 24 24" className="h-[38%] w-[38%]" fill="currentColor" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-[38%] w-[38%]"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <rect x="6" y="6" width="12" height="12" rx="2" />
           </svg>
         ) : (
@@ -261,7 +281,11 @@ export default function Recorder({
         <>
           <div className="flex h-7 items-center gap-1" aria-hidden="true">
             {Array.from({ length: 12 }).map((_, i) => (
-              <i key={i} className="wave-bar" style={{ animationDelay: `${(i % 5) * 0.12}s` }} />
+              <i
+                key={i}
+                className="wave-bar"
+                style={{ animationDelay: `${(i % 5) * 0.12}s` }}
+              />
             ))}
           </div>
           <p className="font-mono text-lg" role="timer">
@@ -294,19 +318,10 @@ export default function Recorder({
           </p>
           {saveState === "saving" && <p className="text-muted">Saving…</p>}
           {saveState === "saved" && <p className="text-invoice">Saved.</p>}
-          {saveState === "failed" && (
-            <>
-              <p role="alert" className="text-variation">
-                {saveError}
-              </p>
-              <button
-                type="button"
-                onClick={() => void save()}
-                className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink"
-              >
-                Try again
-              </button>
-            </>
+          {saveState === "waiting" && (
+            <p role="status" className="font-semibold">
+              {saveError}
+            </p>
           )}
         </div>
       )}
@@ -323,7 +338,9 @@ export default function Recorder({
           {transcript ? (
             <p className="italic">{transcript}</p>
           ) : (
-            <p className="text-muted">I didn&apos;t catch anything. Try again a bit closer to the phone.</p>
+            <p className="text-muted">
+              I didn&apos;t catch anything. Try again a bit closer to the phone.
+            </p>
           )}
         </div>
       )}

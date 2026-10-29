@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyBusiness } from "@/lib/business";
+import PendingNotes from "./pending-notes";
 import Recorder from "./recorder";
 import RecentNotes from "./recent-notes";
 
@@ -42,7 +43,12 @@ async function RecorderGate() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  return <Recorder businessId={business.id} userId={user.id} />;
+  return (
+    <>
+      <Recorder businessId={business.id} userId={user.id} />
+      <PendingNotes userId={user.id} timezone={business.timezone} />
+    </>
+  );
 }
 
 export default function Home() {
