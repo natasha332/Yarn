@@ -4,6 +4,7 @@ import { Barlow, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import BottomNav from "./bottom-nav";
 import RegisterServiceWorker from "./register-sw";
+import Toast from "./toast";
 
 const barlow = Barlow({
   variable: "--font-barlow",
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Suspense fallback={null}>
           <BottomNav />
         </Suspense>
+        <Toast />
         <Suspense fallback={null}>
           <RegisterServiceWorker />
         </Suspense>

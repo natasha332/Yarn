@@ -11,6 +11,7 @@ import {
   todayIn,
 } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
+import BookingActions from "./booking-actions";
 import TickButton from "./tick-button";
 
 type Row = {
@@ -165,6 +166,13 @@ async function TodayContent() {
                       until {formatClock(r.end_time.slice(0, 5))}
                     </span>
                   )}
+                  <BookingActions
+                    id={r.id}
+                    title={r.title}
+                    date={r.due_date!}
+                    start={r.start_time}
+                    end={r.end_time}
+                  />
                 </div>
               </li>
             ))}
@@ -253,6 +261,13 @@ async function TodayContent() {
                 <div className="flex flex-col gap-0.5">
                   <span className="font-semibold leading-snug">{r.title}</span>
                   {who(r) && <span className="text-muted">{who(r)}</span>}
+                  <BookingActions
+                    id={r.id}
+                    title={r.title}
+                    date={r.due_date!}
+                    start={r.start_time}
+                    end={r.end_time}
+                  />
                 </div>
               </li>
             ))}
