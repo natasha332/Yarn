@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { PROMPT_INTRO, removePromptEcho } from "@/lib/transcript";
 
 // Turns a saved voice note into text.
 // The browser only sends the capture id. The audio is fetched here on the server,
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   if (!capture?.audio_url) return fail("Couldn't find that recording.", 404);
 
   // Already done (for example a double tap): just hand back what we have.
-  if (capture.transcript) return NextResponse.json({ transcript: capture.transcript });
+  if (capture.transcript) return NextResponse.json({ transcript: removePromptEcho(capture.transcript) });
 
   async function markFailed() {
     await supabase.from("captures").update({ status: "failed" }).eq("id", captureId);
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
   const { data: clients } = await supabase.from("clients").select("name, aliases").limit(100);
   const names = (clients ?? []).flatMap((c) => [c.name, ...(c.aliases ?? [])]);
   const prompt =
-    "An Australian tradie talking about jobs, clients, bookings, quotes and invoices." +
+    PROMPT_INTRO +
     (names.length ? ` Names that may come up: ${names.join(", ")}.` : "");
 
   const extension = capture.audio_url.split(".").pop() || "webm";
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
     return fail(`OpenAI said no (${res.status}): ${message ?? "no reason given"}`, 502);
   }
 
-  const text = String((await res.json().catch(() => ({}))).text ?? "").trim();
+  const text = removePromptEcho(String((await res.json().catch(() => ({}))).text ?? "").trim());
 
   const { error: saveError } = await supabase
     .from("captures")
