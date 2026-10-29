@@ -8,6 +8,7 @@ import {
   queueChanged,
   type PendingNote,
 } from "@/lib/offline-queue";
+import { CARDS_HANDLED } from "@/lib/card-events";
 import { syncNote } from "@/lib/sync";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
@@ -56,11 +57,14 @@ export default function Recorder({
   const [cards, setCards] = useState<
     { id: string; details?: { duplicate_of?: unknown } | null }[]
   >([]);
+  const [foundCount, setFoundCount] = useState(0); // how many cards this note made
   const repeats = cards.filter((c) => c.details?.duplicate_of).length;
   const [sortError, setSortError] = useState<string | null>(null);
 
   // The note being saved. It's kept on the phone first, so "Try again" never saves it twice.
   const noteRef = useRef<PendingNote | null>(null);
+  // The cards from the note on screen that still need checking.
+  const waitingCardsRef = useRef<Set<string>>(new Set());
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -103,6 +107,8 @@ export default function Recorder({
     setTranscribeError(null);
     setSortState("idle");
     setCards([]);
+    setFoundCount(0);
+    waitingCardsRef.current = new Set();
     setSortError(null);
     noteRef.current = null;
 
@@ -210,7 +216,10 @@ export default function Recorder({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      const found: { id: string }[] = data.cards ?? [];
+      waitingCardsRef.current = new Set(found.map((c) => c.id));
       setCards(data.cards ?? []);
+      setFoundCount(found.length);
       setSortState("done");
     } catch (err) {
       setSortError(
@@ -222,6 +231,40 @@ export default function Recorder({
     }
     router.refresh();
   }, [router]);
+
+  // Everything under the mic about the note you just recorded: back to a clean "Tap to talk".
+  const clearResults = useCallback(() => {
+    setPhase("idle");
+    setSeconds(0);
+    setError(null);
+    setAudioUrl(null);
+    setSaveState("idle");
+    setSaveError(null);
+    setTranscribeState("idle");
+    setTranscript(null);
+    setTranscribeError(null);
+    setSortState("idle");
+    setCards([]);
+    setFoundCount(0);
+    setSortError(null);
+    waitingCardsRef.current = new Set();
+    noteRef.current = null;
+  }, []);
+
+  // Cards were confirmed or discarded below: keep the message honest, and once the last one
+  // from this note is dealt with, tidy up the Talk screen too.
+  useEffect(() => {
+    function onHandled(e: Event) {
+      const { ids } = (e as CustomEvent<{ ids: string[] }>).detail;
+      const waiting = waitingCardsRef.current;
+      if (!ids.some((id) => waiting.has(id))) return; // not about the note on screen
+      ids.forEach((id) => waiting.delete(id));
+      setCards((current) => current.filter((c) => waiting.has(c.id)));
+      if (waiting.size === 0) clearResults();
+    }
+    window.addEventListener(CARDS_HANDLED, onHandled);
+    return () => window.removeEventListener(CARDS_HANDLED, onHandled);
+  }, [clearResults]);
 
   // Ask the server to turn the saved recording into words.
   const transcribe = useCallback(async () => {
@@ -395,7 +438,9 @@ export default function Recorder({
         <p className="text-center font-semibold">
           {repeats === cards.length
             ? "This looks like a repeat of something already in Yarn. Check below."
-            : `Found ${cards.length} ${cards.length === 1 ? "thing" : "things"}. Check ${cards.length === 1 ? "it" : "them"} below.`}
+            : cards.length < foundCount
+              ? `${cards.length} left to check below.`
+              : `Found ${cards.length} ${cards.length === 1 ? "thing" : "things"}. Check ${cards.length === 1 ? "it" : "them"} below.`}
         </p>
       )}
 

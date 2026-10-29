@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { announceCardsHandled } from "@/lib/card-events";
 import { createClient } from "@/lib/supabase/client";
 import {
   CARD_LABEL,
@@ -65,6 +66,7 @@ export default function ToCheckList({
       setError(card.id, error.message);
       return false;
     }
+    announceCardsHandled([card.id]);
     return true;
   }
 
@@ -122,6 +124,7 @@ export default function ToCheckList({
         "Couldn't discard it. Check your signal and try again.",
       );
     else {
+      announceCardsHandled([card.id]);
       setNotice(`Discarded: ${card.title}`);
       router.refresh();
     }
@@ -144,6 +147,7 @@ export default function ToCheckList({
         "Couldn't discard them. Check your signal and try again.",
       );
     } else {
+      announceCardsHandled(group.cards.map((c) => c.id));
       setNotice(
         `Discarded the repeat (${group.cards.length} ${group.cards.length === 1 ? "card" : "cards"})`,
       );
