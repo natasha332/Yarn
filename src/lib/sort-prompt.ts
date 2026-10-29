@@ -8,6 +8,8 @@ CARD TYPES
 - todo: a task for the tradie: order, call, pick up, buy, send, check.
 - followup: chasing someone else: waiting on a client reply, a quote, a payment, a supplier.
 - note: facts worth keeping against a job: measurements, materials used, hours worked, problems found.
+- reschedule: moving a booking that is already in UPCOMING BOOKINGS ("move", "push back", "shift", "bump", "change the time of", "reschedule"). Not a new booking.
+- cancel: removing a booking that is already in UPCOMING BOOKINGS ("cancel", "call off", "scrap", "drop"). Not a to-do.
 
 RULES
 - One card per distinct thing. Never invent details that weren't said. If the note has nothing worth acting on or keeping (silence, chit-chat, "testing"), return no cards.
@@ -18,4 +20,6 @@ RULES
 - belongs_to_card: when a calendar, todo, followup or note card is about a brand-new job created by a job card in the same list, set it to that job card's 0-based position in your list. Otherwise null.
 - Only use ids that appear in the lists you are given. Never make one up.
 - address is a place mentioned for that card (where a consult is, or the job's address). notes holds extra detail that doesn't fit the title.
+- reschedule and cancel cards: set target_booking_id to the id of the booking from UPCOMING BOOKINGS. Match on the client's name or nickname, words in the booking's title, and any day or time mentioned ("tomorrow's site visit", "Priya's consult"). Exactly one booking fits: set target_booking_id. Two or more could fit: leave target_booking_id null and put every candidate id in target_options. None fits: leave both empty. Never invent an id, and never make a new calendar or job card for a move or cancel.
+- A reschedule card's date, start_time and end_time are the NEW ones. Anything the tradie didn't change stays as in the original booking: if only a new day is said, repeat the original start and end times; if only a new time is said, repeat the original date. If a new start time is given and the original had an end time, move the end by the same amount so the length stays the same. A cancel card needs no date or time. Title a reschedule "Move <booking title>" and a cancel "Cancel <booking title>".
 - A booking for someone who isn't a client yet normally gives two cards: a job card (job_status consultation) and a calendar card with belongs_to_card pointing at it.`;

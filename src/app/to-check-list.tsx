@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   CARD_LABEL,
   CARD_TEXT_CLASS,
+  type BookingSnapshot,
   type CardDetails,
   type PendingCard,
   type ToCheckGroup,
@@ -21,8 +22,20 @@ const bigButton = "h-12 rounded-xl px-4 font-semibold disabled:opacity-50";
 
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : "");
 
+// "Tue 3 Nov · 9:00am" (or just the day for an all-day booking)
+function bookingWhen(date: string | null, start: string | null) {
+  return [date && formatDay(date), start && formatClock(start.slice(0, 5))]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 // A card is ready to confirm when it has what it needs.
 function needs(card: PendingCard): string | null {
+  if (card.type === "reschedule" || card.type === "cancel") {
+    if (!card.details.target_item_id) return "Choose which booking";
+    if (card.type === "reschedule" && !card.due_date) return "Needs a new day";
+    return null;
+  }
   if (card.type === "calendar" && !card.due_date) return "Needs a date";
   if (
     card.type === "job" &&
@@ -157,6 +170,24 @@ export default function ToCheckList({
     setBusy(null);
   }
 
+  async function onChooseBooking(card: PendingCard, booking: BookingSnapshot) {
+    setBusy(card.id);
+    const { error } = await createClient()
+      .from("items")
+      .update({
+        details: {
+          ...card.details,
+          target_item_id: booking.id,
+          target: booking,
+          target_options: [],
+        },
+      })
+      .eq("id", card.id);
+    if (error) setError(card.id, "Couldn't save that choice. Try again.");
+    else router.refresh();
+    setBusy(null);
+  }
+
   async function onChooseClient(card: PendingCard, clientId: string) {
     setBusy(card.id);
     const { error } = await createClient()
@@ -220,6 +251,7 @@ export default function ToCheckList({
               onConfirm={() => void onConfirm(card)}
               onDiscard={() => void onDiscard(card)}
               onChooseClient={(id) => void onChooseClient(card, id)}
+              onChooseBooking={(b) => void onChooseBooking(card, b)}
               onSaved={() => {
                 setNotice(null);
                 router.refresh();
@@ -240,6 +272,7 @@ function CardView({
   onConfirm,
   onDiscard,
   onChooseClient,
+  onChooseBooking,
   onSaved,
 }: {
   card: PendingCard;
@@ -249,9 +282,11 @@ function CardView({
   onConfirm: () => void;
   onDiscard: () => void;
   onChooseClient: (clientId: string) => void;
+  onChooseBooking: (booking: BookingSnapshot) => void;
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const isChange = card.type === "reschedule" || card.type === "cancel";
   const d = card.details;
   const missing = needs(card);
   const when = [
@@ -285,6 +320,48 @@ function CardView({
       </span>
       <h3 className="text-lg font-semibold leading-snug">{card.title}</h3>
 
+      {isChange && d.target && (
+        <div className="flex flex-col gap-0.5">
+          {card.type === "reschedule" ? (
+            <>
+              <p className="text-muted">
+                Now:{" "}
+                <span className="font-mono text-sm">
+                  {bookingWhen(d.target.date, d.target.start)}
+                </span>
+              </p>
+              <p className="font-semibold">
+                Move to:{" "}
+                <span className="font-mono text-sm">
+                  {bookingWhen(
+                    card.due_date,
+                    card.start_time?.slice(0, 5) ?? null,
+                  )}
+                  {card.end_time && card.start_time
+                    ? ` until ${formatClock(card.end_time.slice(0, 5))}`
+                    : ""}
+                </span>
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-muted">
+                Booked for:{" "}
+                <span className="font-mono text-sm">
+                  {bookingWhen(d.target.date, d.target.start)}
+                </span>
+              </p>
+              <p className="text-muted">
+                It will be taken off Today and your calendar.
+              </p>
+            </>
+          )}
+          {d.target.client && (
+            <p className="text-muted">Client: {d.target.client}</p>
+          )}
+        </div>
+      )}
+
       {card.type === "job" && (
         <p className="text-muted">
           {card.client_id
@@ -296,10 +373,12 @@ function CardView({
           {statusLabel(d.job_status ?? "consultation")}
         </p>
       )}
-      {card.type !== "job" && card.client_name && (
+      {card.type !== "job" && !isChange && card.client_name && (
         <p className="text-muted">Client: {card.client_name}</p>
       )}
-      {when && <p className="font-mono text-sm text-muted">{when}</p>}
+      {when && !isChange && (
+        <p className="font-mono text-sm text-muted">{when}</p>
+      )}
       {d.address && <p className="text-muted">{d.address}</p>}
       {d.notes && <p className="text-muted">{d.notes}</p>}
       {missing && <p className="font-semibold text-variation">{missing}</p>}
@@ -326,6 +405,35 @@ function CardView({
                 className="h-12 rounded-xl border border-line bg-bg px-4 font-semibold disabled:opacity-50"
               >
                 {o.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isChange && !d.target_item_id && (
+        <div className="flex flex-col gap-2">
+          <p className="font-semibold">Which booking?</p>
+          {(d.target_options ?? []).length === 0 && (
+            <p className="text-muted">
+              I couldn&apos;t find a booking to change. Confirmed bookings show
+              here.
+            </p>
+          )}
+          <div className="flex flex-col gap-2">
+            {(d.target_options ?? []).map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => onChooseBooking(b)}
+                disabled={busy}
+                className="flex min-h-12 flex-col items-start rounded-xl border border-line bg-bg px-4 py-2 text-left font-semibold disabled:opacity-50"
+              >
+                <span>{b.title}</span>
+                <span className="font-mono text-xs font-normal text-muted">
+                  {bookingWhen(b.date, b.start)}
+                  {b.client ? ` · ${b.client}` : ""}
+                </span>
               </button>
             ))}
           </div>
@@ -378,14 +486,16 @@ function CardView({
             </button>
           </>
         )}
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          disabled={busy}
-          className={`${bigButton} border border-line bg-surface ${d.duplicate_of ? "flex-1" : ""}`}
-        >
-          Edit
-        </button>
+        {card.type !== "cancel" && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={busy}
+            className={`${bigButton} border border-line bg-surface ${d.duplicate_of ? "flex-1" : ""}`}
+          >
+            Edit
+          </button>
+        )}
       </div>
     </article>
   );
@@ -417,7 +527,8 @@ function EditCard({
   const [error, setError] = useState<string | null>(null);
 
   const isJob = card.type === "job";
-  const isCalendar = card.type === "calendar";
+  const isMove = card.type === "reschedule";
+  const isCalendar = card.type === "calendar" || isMove; // has a date and times
   const hasDate =
     isCalendar || card.type === "todo" || card.type === "followup";
 
@@ -530,7 +641,7 @@ function EditCard({
 
       {hasDate && (
         <DateField
-          label={isCalendar ? "Date" : "Due"}
+          label={isMove ? "New day" : isCalendar ? "Date" : "Due"}
           value={date}
           onChange={(iso, ok) => {
             setDate(iso);
@@ -565,7 +676,7 @@ function EditCard({
         </div>
       )}
 
-      {(isCalendar || isJob) && (
+      {(card.type === "calendar" || isJob) && (
         <label className="flex flex-col gap-1 font-semibold">
           {isJob ? "Job address" : "Where"}
           <input

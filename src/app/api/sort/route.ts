@@ -6,6 +6,8 @@ import {
   findRepeatedNote,
   type ExistingItem,
 } from "@/lib/duplicates";
+import { resolveChange, type Booking } from "@/lib/bookings";
+import { addDays, dateIn } from "@/lib/format";
 import { SORT_SYSTEM_PROMPT } from "@/lib/sort-prompt";
 import { SortResult, type SortedCard } from "@/lib/sort-schema";
 import { createClient } from "@/lib/supabase/server";
@@ -90,6 +92,33 @@ export async function POST(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(100),
   ]);
+  // Upcoming confirmed bookings, so "move Priya's consult" can be matched to a real one.
+  const todayIso = dateIn(business.timezone);
+  const { data: bookingRows } = await supabase
+    .from("items")
+    .select("id, title, due_date, start_time, end_time, details, clients(name)")
+    .eq("type", "calendar")
+    .eq("status", "confirmed")
+    .gte("due_date", addDays(todayIso, -1))
+    .lte("due_date", addDays(todayIso, 120))
+    .order("due_date")
+    .order("start_time")
+    .limit(60);
+  const bookings: (Booking & { address: string | null })[] = (
+    bookingRows ?? []
+  ).map((b) => {
+    const client = Array.isArray(b.clients) ? b.clients[0] : b.clients;
+    return {
+      id: b.id,
+      title: b.title,
+      date: b.due_date as string,
+      start: b.start_time ? b.start_time.slice(0, 5) : null,
+      end: b.end_time ? b.end_time.slice(0, 5) : null,
+      client: client?.name ?? null,
+      address: b.details?.address ?? null,
+    };
+  });
+
   // What's already in Yarn from the last 30 days, so a repeat can be spotted.
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const [{ data: pastItems }, { data: pastNotes }] = await Promise.all([
@@ -143,6 +172,7 @@ export async function POST(request: NextRequest) {
             `TODAY: ${todayIn(business.timezone)} (timezone ${business.timezone})\n\n` +
             `CLIENTS (JSON):\n${JSON.stringify(clients ?? [])}\n\n` +
             `OPEN JOBS (JSON):\n${JSON.stringify(jobs ?? [])}\n\n` +
+            `UPCOMING BOOKINGS (JSON):\n${JSON.stringify(bookings)}\n\n` +
             `VOICE NOTE:\n${capture.transcript}`,
         },
       ],
@@ -179,6 +209,56 @@ export async function POST(request: NextRequest) {
     const options = clientId
       ? []
       : card.client_options.filter((id) => clientIds.has(id));
+    if (card.type === "reschedule" || card.type === "cancel") {
+      const change = resolveChange(
+        {
+          type: card.type,
+          title: card.title,
+          target_booking_id: card.target_booking_id,
+          target_options: card.target_options,
+          date: isDate(card.date) ? card.date : null,
+          start_time: isTime(card.start_time) ? card.start_time : null,
+          end_time: isTime(card.end_time) ? card.end_time : null,
+        },
+        bookings,
+      );
+      const snapshot = (b: Booking) => ({
+        id: b.id,
+        title: b.title,
+        date: b.date,
+        start: b.start,
+        end: b.end,
+        client: b.client,
+      });
+      return {
+        capture_id: captureId,
+        business_id: business.id,
+        type: card.type,
+        title: change.title,
+        client_id: null,
+        job_id: null,
+        due_date: change.due_date,
+        start_time: change.start_time,
+        end_time: change.end_time,
+        details: {
+          target_item_id: change.targetId,
+          target: change.target ? snapshot(change.target) : null,
+          target_options: change.options.map(snapshot),
+          notes: card.notes,
+          duplicate_of: change.alreadyThere
+            ? {
+                kind: "card",
+                id: change.targetId,
+                title: change.target?.title ?? "",
+                status: "confirmed",
+                label: `“${change.target?.title}” is already booked at that time`,
+              }
+            : repeatedNote,
+        },
+        status: "pending",
+        position,
+      };
+    }
     const dueDate = isDate(card.date) ? card.date : null;
     const startTime = isTime(card.start_time) ? card.start_time : null;
     const jobId = card.job_id && jobIds.has(card.job_id) ? card.job_id : null;

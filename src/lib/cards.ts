@@ -10,6 +10,8 @@ export const CARD_LABEL: Record<string, string> = {
   invoice: "Invoice",
   quote: "Quote",
   variation: "Variation",
+  reschedule: "Reschedule",
+  cancel: "Cancel booking",
 };
 
 export const CARD_TEXT_CLASS: Record<string, string> = {
@@ -21,9 +23,24 @@ export const CARD_TEXT_CLASS: Record<string, string> = {
   invoice: "text-invoice",
   quote: "text-quote",
   variation: "text-variation",
+  reschedule: "text-cal",
+  cancel: "text-variation",
+};
+
+// A booking, as the Reschedule and Cancel cards describe it.
+export type BookingSnapshot = {
+  id: string;
+  title: string;
+  date: string;
+  start: string | null;
+  end: string | null;
+  client: string | null;
 };
 
 export type CardDetails = {
+  target_item_id?: string | null;
+  target?: BookingSnapshot | null;
+  target_options?: BookingSnapshot[];
   address?: string | null;
   notes?: string | null;
   job_status?: string | null;

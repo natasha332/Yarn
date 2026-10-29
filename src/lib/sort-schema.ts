@@ -3,8 +3,22 @@ import { z } from "zod";
 // What Claude hands back for each voice note: a short list of cards.
 // Everything is spelled out so the answer always has the same shape.
 
-export const CARD_TYPES = ["job", "calendar", "todo", "followup", "note"] as const;
-export const JOB_STATUS_VALUES = ["consultation", "quoted", "booked", "in_progress", "done"] as const;
+export const CARD_TYPES = [
+  "job",
+  "calendar",
+  "todo",
+  "followup",
+  "note",
+  "reschedule",
+  "cancel",
+] as const;
+export const JOB_STATUS_VALUES = [
+  "consultation",
+  "quoted",
+  "booked",
+  "in_progress",
+  "done",
+] as const;
 
 const NewClient = z.object({
   name: z.string(),
@@ -28,6 +42,8 @@ const Card = z.object({
   address: z.string().nullable(),
   notes: z.string().nullable(),
   belongs_to_card: z.number().int().nullable(), // 0-based position of the "job" card this goes with
+  target_booking_id: z.string().nullable(), // "reschedule" and "cancel" cards: the id of the booking, from the bookings list
+  target_options: z.array(z.string()), // ids of the bookings it could be, when two or more fit
 });
 
 export const SortResult = z.object({ cards: z.array(Card) });
