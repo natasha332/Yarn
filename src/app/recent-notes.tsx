@@ -2,6 +2,7 @@ import { requireBusiness } from "@/lib/business";
 import { formatWhen } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { removePromptEcho } from "@/lib/transcript";
+import DeleteNote from "./delete-note";
 import WriteItDown from "./write-it-down";
 
 export default async function RecentNotes() {
@@ -9,7 +10,7 @@ export default async function RecentNotes() {
   const supabase = await createClient();
   const { data: notes } = await supabase
     .from("captures")
-    .select("id, transcript, status, created_at")
+    .select("id, transcript, status, created_at, audio_url")
     .order("created_at", { ascending: false })
     .limit(10);
 
@@ -34,9 +35,12 @@ export default async function RecentNotes() {
                 key={n.id}
                 className="flex flex-col gap-2 border-t border-line p-4 first:border-t-0"
               >
-                <span className="font-mono text-xs tracking-wide text-muted">
-                  {formatWhen(n.created_at, business.timezone)}
-                </span>
+                <div className="-my-2 flex items-center justify-between">
+                  <span className="font-mono text-xs tracking-wide text-muted">
+                    {formatWhen(n.created_at, business.timezone)}
+                  </span>
+                  <DeleteNote captureId={n.id} audioPath={n.audio_url} />
+                </div>
                 {heard ? (
                   <details className="group">
                     <summary className="cursor-pointer list-none italic group-open:hidden">
