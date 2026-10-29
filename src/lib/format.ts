@@ -79,3 +79,9 @@ export function formatLongDay(dateString: string) {
   );
   return `${p.weekday} ${p.day} ${p.month}`;
 }
+
+// "2026-11-05" -> "05/11/2026" (day first)
+export function formatNumericDay(dateString: string) {
+  const [y, m, d] = dateString.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : "";
+}

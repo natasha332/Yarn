@@ -19,12 +19,14 @@ export default function BookingActions({
   date,
   start,
   end,
+  timezone,
 }: {
   id: string;
   title: string;
   date: string;
   start: string | null; // "09:00:00" from the database
   end: string | null;
+  timezone: string;
 }) {
   const router = useRouter();
   const [moving, setMoving] = useState(false);
@@ -93,6 +95,8 @@ export default function BookingActions({
             setNewDate(iso);
             setDateOk(ok && iso !== "");
           }}
+          startOpen
+          timezone={timezone}
           className="text-sm font-semibold"
         />
         <div className="grid grid-cols-2 gap-3">

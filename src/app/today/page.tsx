@@ -174,6 +174,7 @@ async function TodayContent() {
                     date={r.due_date!}
                     start={r.start_time}
                     end={r.end_time}
+                    timezone={business.timezone}
                   />
                 </div>
               </li>
@@ -271,6 +272,7 @@ async function TodayContent() {
                     date={r.due_date!}
                     start={r.start_time}
                     end={r.end_time}
+                    timezone={business.timezone}
                   />
                 </div>
               </li>

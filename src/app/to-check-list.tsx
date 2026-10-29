@@ -214,6 +214,7 @@ export default function ToCheckList({
             <CardView
               key={card.id}
               card={card}
+              timezone={timezone}
               busy={busy === card.id || busy === `group:${group.key}`}
               error={errors[card.id]}
               onConfirm={() => void onConfirm(card)}
@@ -233,6 +234,7 @@ export default function ToCheckList({
 
 function CardView({
   card,
+  timezone,
   busy,
   error,
   onConfirm,
@@ -241,6 +243,7 @@ function CardView({
   onSaved,
 }: {
   card: PendingCard;
+  timezone: string;
   busy: boolean;
   error: string | undefined;
   onConfirm: () => void;
@@ -263,6 +266,7 @@ function CardView({
     return (
       <EditCard
         card={card}
+        timezone={timezone}
         onCancel={() => setEditing(false)}
         onSaved={() => {
           setEditing(false);
@@ -389,10 +393,12 @@ function CardView({
 
 function EditCard({
   card,
+  timezone,
   onCancel,
   onSaved,
 }: {
   card: PendingCard;
+  timezone: string;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -530,6 +536,8 @@ function EditCard({
             setDate(iso);
             setDateOk(ok);
           }}
+          optional={!isCalendar}
+          timezone={timezone}
           className="font-semibold"
         />
       )}
