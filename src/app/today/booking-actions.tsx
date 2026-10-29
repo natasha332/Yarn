@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import DateField from "../date-field";
 import { formatClock, formatDay } from "@/lib/format";
 import { showToast } from "@/lib/toast";
 
@@ -30,6 +31,7 @@ export default function BookingActions({
   const [newDate, setNewDate] = useState(date);
   const [newStart, setNewStart] = useState(start?.slice(0, 5) ?? "");
   const [newEnd, setNewEnd] = useState(end?.slice(0, 5) ?? "");
+  const [dateOk, setDateOk] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,16 +86,15 @@ export default function BookingActions({
         onSubmit={reschedule}
         className="mt-2 flex flex-col gap-3 rounded-xl border border-accent bg-bg p-3"
       >
-        <label className="flex flex-col gap-1 text-sm font-semibold">
-          New day
-          <input
-            type="date"
-            required
-            value={newDate}
-            onChange={(e) => setNewDate(e.target.value)}
-            className={inputClass}
-          />
-        </label>
+        <DateField
+          label="New day"
+          value={newDate}
+          onChange={(iso, ok) => {
+            setNewDate(iso);
+            setDateOk(ok && iso !== "");
+          }}
+          className="text-sm font-semibold"
+        />
         <div className="grid grid-cols-2 gap-3">
           <label className="flex min-w-0 flex-col gap-1 text-sm font-semibold">
             Starts
@@ -122,7 +123,7 @@ export default function BookingActions({
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !dateOk}
             className={`${smallButton} flex-1 bg-accent text-accent-ink`}
           >
             {busy ? "Saving…" : "Move it"}

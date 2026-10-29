@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { announceCardsHandled } from "@/lib/card-events";
+import DateField from "./date-field";
 import { createClient } from "@/lib/supabase/client";
 import {
   CARD_LABEL,
@@ -405,6 +406,7 @@ function EditCard({
   const [clientName, setClientName] = useState(d.new_client?.name ?? "");
   const [clientPhone, setClientPhone] = useState(d.new_client?.phone ?? "");
   const [status, setStatus] = useState(d.job_status ?? "consultation");
+  const [dateOk, setDateOk] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -521,15 +523,15 @@ function EditCard({
       )}
 
       {hasDate && (
-        <label className="flex flex-col gap-1 font-semibold">
-          {isCalendar ? "Date" : "Due"}
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className={inputClass}
-          />
-        </label>
+        <DateField
+          label={isCalendar ? "Date" : "Due"}
+          value={date}
+          onChange={(iso, ok) => {
+            setDate(iso);
+            setDateOk(ok);
+          }}
+          className="font-semibold"
+        />
       )}
 
       {isCalendar && (
@@ -587,7 +589,7 @@ function EditCard({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || !dateOk}
           className={`${bigButton} flex-1 bg-accent text-accent-ink`}
         >
           {busy ? "Saving…" : "Save"}
