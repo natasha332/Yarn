@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yarn: no signal</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 16px;
+         padding: 24px; box-sizing: border-box; max-width: 28rem; margin-inline: auto;
+         font: 17px/1.45 system-ui, sans-serif; background: #eef0ee; color: #1b2125; }
+  h1 { font: 700 48px/1 "Arial Narrow", system-ui, sans-serif; margin: 0; }
+  h1 span { color: #e25a0f; }
+  p { margin: 0; color: #5d686e; }
+  button { height: 56px; border: 0; border-radius: 12px; background: #e25a0f; color: #fff; font: 600 18px system-ui, sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #111517; color: #e7ebe9; } p { color: #9aa5aa; } button { background: #ff7b36; color: #1a1206; }
+  }
+</style>
+</head>
+<body>
+  <h1>yarn<span>.</span></h1>
+  <p><b style="color:inherit">No signal right now.</b></p>
+  <p>Open Yarn again when you're back online. Any notes you already recorded are safe on your phone and will upload by themselves.</p>
+  <button onclick="location.href='/'">Try again</button>
+</body>
+</html>

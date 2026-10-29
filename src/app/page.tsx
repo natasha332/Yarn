@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyBusiness } from "@/lib/business";
+import LogOutButton from "./log-out-button";
 import PendingNotes from "./pending-notes";
 import Recorder from "./recorder";
 import RecentNotes from "./recent-notes";
@@ -91,9 +92,7 @@ export default function Home() {
         <Suspense fallback={<p className="font-mono text-xs text-muted">…</p>}>
           <WhoAmI />
         </Suspense>
-        <form action={logOut}>
-          <button className="h-12 px-6 text-muted underline">Log out</button>
-        </form>
+        <LogOutButton action={logOut} />
       </div>
     </main>
   );
