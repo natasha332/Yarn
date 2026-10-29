@@ -9,6 +9,7 @@ import {
   type PendingNote,
 } from "@/lib/offline-queue";
 import { CARDS_HANDLED } from "@/lib/card-events";
+import { createClient } from "@/lib/supabase/client";
 import { syncNote } from "@/lib/sync";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
@@ -216,9 +217,15 @@ export default function Recorder({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
-      const found: { id: string }[] = data.cards ?? [];
+      // Only cards still waiting count (a note that was sorted before may come back with
+      // some already approved).
+      const found: { id: string; status?: string }[] = (
+        data.cards ?? []
+      ).filter(
+        (c: { status?: string }) => (c.status ?? "pending") === "pending",
+      );
       waitingCardsRef.current = new Set(found.map((c) => c.id));
-      setCards(data.cards ?? []);
+      setCards(found);
       setFoundCount(found.length);
       setSortState("done");
     } catch (err) {
@@ -251,20 +258,38 @@ export default function Recorder({
     noteRef.current = null;
   }, []);
 
-  // Cards were confirmed or discarded below: keep the message honest, and once the last one
-  // from this note is dealt with, tidy up the Talk screen too.
-  useEffect(() => {
-    function onHandled(e: Event) {
-      const { ids } = (e as CustomEvent<{ ids: string[] }>).detail;
-      const waiting = waitingCardsRef.current;
-      if (!ids.some((id) => waiting.has(id))) return; // not about the note on screen
-      ids.forEach((id) => waiting.delete(id));
-      setCards((current) => current.filter((c) => waiting.has(c.id)));
-      if (waiting.size === 0) clearResults();
-    }
-    window.addEventListener(CARDS_HANDLED, onHandled);
-    return () => window.removeEventListener(CARDS_HANDLED, onHandled);
+  // Which of this note's cards are still waiting? Ask the database, so the message can never
+  // drift from what's really in "To check". If nothing is left, tidy up the Talk screen too.
+  const refreshWaiting = useCallback(async () => {
+    const id = noteRef.current?.id;
+    if (!id || waitingCardsRef.current.size === 0) return;
+    const { data, error } = await createClient()
+      .from("items")
+      .select("id, details")
+      .eq("capture_id", id)
+      .eq("status", "pending");
+    if (error || !data) return; // no signal right now: leave it as it is
+    if (noteRef.current?.id !== id) return; // a newer note is on screen now
+    waitingCardsRef.current = new Set(data.map((c) => c.id));
+    if (data.length === 0) clearResults();
+    else setCards(data);
   }, [clearResults]);
+
+  // Look again whenever cards are dealt with below, and when you come back to the app.
+  useEffect(() => {
+    const check = () => void refreshWaiting();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    window.addEventListener(CARDS_HANDLED, check);
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener(CARDS_HANDLED, check);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshWaiting]);
 
   // Ask the server to turn the saved recording into words.
   const transcribe = useCallback(async () => {
