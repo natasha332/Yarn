@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
@@ -37,6 +38,7 @@ export default function Recorder({
   businessId: string;
   userId: string;
 }) {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +206,7 @@ export default function Recorder({
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
       setTranscript(data.transcript ?? "");
       setTranscribeState("done");
+      router.refresh(); // so the new note shows in the Recent notes list
     } catch (err) {
       setTranscribeError(
         err instanceof Error && err.message !== "Failed to fetch"
@@ -211,6 +214,7 @@ export default function Recorder({
           : "Couldn't reach Yarn. Check your signal and try again.",
       );
       setTranscribeState("failed");
+      router.refresh();
     }
   }
 

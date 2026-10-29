@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMyBusiness } from "@/lib/business";
 import Recorder from "./recorder";
+import RecentNotes from "./recent-notes";
 
 async function logOut() {
   "use server";
@@ -59,6 +60,10 @@ export default function Home() {
         }
       >
         <RecorderGate />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <RecentNotes />
       </Suspense>
 
       <nav className="flex flex-col gap-3">
