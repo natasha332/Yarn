@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  findDuplicate,
+  findRepeatedNote,
+  type ExistingItem,
+} from "@/lib/duplicates";
 import { SORT_SYSTEM_PROMPT } from "@/lib/sort-prompt";
 import { SortResult, type SortedCard } from "@/lib/sort-schema";
 import { createClient } from "@/lib/supabase/server";
@@ -85,6 +90,42 @@ export async function POST(request: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(100),
   ]);
+  // What's already in Yarn from the last 30 days, so a repeat can be spotted.
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [{ data: pastItems }, { data: pastNotes }] = await Promise.all([
+    supabase
+      .from("items")
+      .select(
+        "id, type, title, due_date, start_time, client_id, job_id, details, status",
+      )
+      .in("status", ["pending", "confirmed"])
+      .or(`capture_id.is.null,capture_id.neq.${captureId}`)
+      .gte("created_at", since)
+      .limit(400),
+    supabase
+      .from("captures")
+      .select("id, transcript")
+      .neq("id", captureId)
+      .not("transcript", "is", null)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ]);
+  const pastCards: ExistingItem[] = (pastItems ?? []).map((i) => ({
+    id: i.id,
+    type: i.type,
+    title: i.title,
+    due_date: i.due_date,
+    start_time: i.start_time,
+    client_id: i.client_id,
+    job_id: i.job_id,
+    new_client_name: i.details?.new_client?.name ?? null,
+    status: i.status,
+  }));
+  const repeatedNote = findRepeatedNote(
+    capture.transcript,
+    (pastNotes ?? []).filter((n) => n.id !== captureId),
+  );
   const clientIds = new Set((clients ?? []).map((c) => c.id));
   const jobIds = new Set((jobs ?? []).map((j) => j.id));
 
@@ -138,15 +179,34 @@ export async function POST(request: NextRequest) {
     const options = clientId
       ? []
       : card.client_options.filter((id) => clientIds.has(id));
+    const dueDate = isDate(card.date) ? card.date : null;
+    const startTime = isTime(card.start_time) ? card.start_time : null;
+    const jobId = card.job_id && jobIds.has(card.job_id) ? card.job_id : null;
+    const duplicateOf =
+      findDuplicate(
+        {
+          type: card.type,
+          title: card.title,
+          due_date: dueDate,
+          start_time: startTime,
+          client_id: clientId,
+          job_id: jobId,
+          new_client_name:
+            card.type === "job" ? (card.new_client?.name ?? null) : null,
+        },
+        pastCards,
+        jobs ?? [],
+        names,
+      ) ?? repeatedNote;
     return {
       capture_id: captureId,
       business_id: business.id,
       type: card.type,
       title: card.title.trim().slice(0, 200) || "Untitled",
       client_id: clientId,
-      job_id: card.job_id && jobIds.has(card.job_id) ? card.job_id : null,
-      due_date: isDate(card.date) ? card.date : null,
-      start_time: isTime(card.start_time) ? card.start_time : null,
+      job_id: jobId,
+      due_date: dueDate,
+      start_time: startTime,
       end_time: isTime(card.end_time) ? card.end_time : null,
       details: {
         address: card.address,
@@ -158,6 +218,7 @@ export async function POST(request: NextRequest) {
           id,
           name: names.get(id) ?? "",
         })),
+        duplicate_of: duplicateOf,
         belongs_to_card:
           card.belongs_to_card !== null &&
           sorted[card.belongs_to_card]?.type === "job"

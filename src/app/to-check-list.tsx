@@ -84,14 +84,27 @@ export default function ToCheckList({
     setBusy(`group:${group.key}`);
     setNotice(null);
     let done = 0;
+    let repeats = 0;
     for (const card of [...group.cards].sort(
       (a, b) => a.position - b.position,
     )) {
+      if (card.details.duplicate_of) {
+        repeats++; // never confirm a possible repeat unless you decide to
+        continue;
+      }
       if (needs(card)) continue; // leave the ones that still need something
       if (!(await confirm(card))) break;
       done++;
     }
-    if (done) setNotice(`✓ Confirmed ${done} ${done === 1 ? "card" : "cards"}`);
+    const parts: string[] = [];
+    if (done)
+      parts.push(`✓ Confirmed ${done} ${done === 1 ? "card" : "cards"}`);
+    if (repeats) {
+      parts.push(
+        `skipped ${repeats} possible ${repeats === 1 ? "repeat" : "repeats"}`,
+      );
+    }
+    if (parts.length) setNotice(parts.join(" · "));
     router.refresh();
     setBusy(null);
   }
@@ -110,6 +123,30 @@ export default function ToCheckList({
       );
     else {
       setNotice(`Discarded: ${card.title}`);
+      router.refresh();
+    }
+    setBusy(null);
+  }
+
+  async function onDiscardAll(group: ToCheckGroup) {
+    setBusy(`group:${group.key}`);
+    setNotice(null);
+    const { error } = await createClient()
+      .from("items")
+      .update({ status: "discarded" })
+      .in(
+        "id",
+        group.cards.map((c) => c.id),
+      );
+    if (error) {
+      setError(
+        group.cards[0].id,
+        "Couldn't discard them. Check your signal and try again.",
+      );
+    } else {
+      setNotice(
+        `Discarded the repeat (${group.cards.length} ${group.cards.length === 1 ? "card" : "cards"})`,
+      );
       router.refresh();
     }
     setBusy(null);
@@ -143,15 +180,28 @@ export default function ToCheckList({
             <span className="font-mono text-xs tracking-wide text-muted">
               From your note · {formatWhen(group.when, timezone)}
             </span>
-            {group.cards.length > 1 && (
+            {group.cards.every((c) => c.details.duplicate_of) ? (
               <button
                 type="button"
-                onClick={() => void onConfirmAll(group)}
+                onClick={() => void onDiscardAll(group)}
                 disabled={busy !== null}
-                className="h-11 shrink-0 whitespace-nowrap rounded-xl border border-line bg-surface px-3 text-sm font-semibold disabled:opacity-50"
+                className="h-11 shrink-0 whitespace-nowrap rounded-xl bg-ink px-3 text-sm font-semibold text-surface disabled:opacity-50"
               >
-                {busy === `group:${group.key}` ? "Confirming…" : "Confirm all"}
+                {busy === `group:${group.key}` ? "Discarding…" : "Discard all"}
               </button>
+            ) : (
+              group.cards.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => void onConfirmAll(group)}
+                  disabled={busy !== null}
+                  className="h-11 shrink-0 whitespace-nowrap rounded-xl border border-line bg-surface px-3 text-sm font-semibold disabled:opacity-50"
+                >
+                  {busy === `group:${group.key}`
+                    ? "Confirming…"
+                    : "Confirm all"}
+                </button>
+              )
             )}
           </div>
 
@@ -245,6 +295,15 @@ function CardView({
       {d.notes && <p className="text-muted">{d.notes}</p>}
       {missing && <p className="font-semibold text-variation">{missing}</p>}
 
+      {d.duplicate_of && (
+        <p
+          role="note"
+          className="rounded-lg border border-todo bg-bg p-3 font-semibold text-todo"
+        >
+          ⚠ Looks like a repeat of {d.duplicate_of.label}
+        </p>
+      )}
+
       {options.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="font-semibold">Which client?</p>
@@ -270,30 +329,53 @@ function CardView({
         </p>
       )}
 
-      <div className="mt-1 flex gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={busy || !!missing}
-          className={`${bigButton} flex-1 bg-ink text-surface`}
-        >
-          {busy ? "One sec…" : "Confirm"}
-        </button>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {d.duplicate_of ? (
+          <>
+            <button
+              type="button"
+              onClick={onDiscard}
+              disabled={busy}
+              className={`${bigButton} w-full bg-ink text-surface`}
+            >
+              {busy ? "One sec…" : "Discard repeat"}
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy || !!missing}
+              className={`${bigButton} flex-1 border border-line bg-surface`}
+            >
+              Keep anyway
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy || !!missing}
+              className={`${bigButton} flex-1 bg-ink text-surface`}
+            >
+              {busy ? "One sec…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              onClick={onDiscard}
+              disabled={busy}
+              className={`${bigButton} px-3 text-muted underline`}
+            >
+              Discard
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={() => setEditing(true)}
           disabled={busy}
-          className={`${bigButton} border border-line bg-surface`}
+          className={`${bigButton} border border-line bg-surface ${d.duplicate_of ? "flex-1" : ""}`}
         >
           Edit
-        </button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          disabled={busy}
-          className={`${bigButton} px-3 text-muted underline`}
-        >
-          Discard
         </button>
       </div>
     </article>

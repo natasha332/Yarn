@@ -8,11 +8,24 @@ import WriteItDown from "./write-it-down";
 export default async function RecentNotes() {
   const business = await requireBusiness();
   const supabase = await createClient();
-  const { data: notes } = await supabase
+  const { data: allNotes } = await supabase
     .from("captures")
-    .select("id, transcript, status, created_at, audio_url")
+    .select("id, transcript, status, created_at, audio_url, items(status)")
     .order("created_at", { ascending: false })
-    .limit(10);
+    .limit(40);
+
+  // Once a note's cards have been approved (none left waiting, at least one confirmed),
+  // the note has done its job and clears off the home screen. The recording and its words are
+  // kept safely in Yarn: only this list tidies up.
+  const notes = (allNotes ?? [])
+    .filter((n) => {
+      const statuses = (n.items ?? []).map((i: { status: string }) => i.status);
+      const approved = statuses.some(
+        (s: string) => s === "confirmed" || s === "done",
+      );
+      return !(approved && !statuses.includes("pending"));
+    })
+    .slice(0, 10);
 
   return (
     <section className="flex flex-col gap-3">
@@ -20,7 +33,7 @@ export default async function RecentNotes() {
         Recent notes
       </h2>
 
-      {!notes?.length ? (
+      {!notes.length ? (
         <p className="rounded-xl border border-dashed border-line bg-surface p-4 text-muted">
           Your notes will show up here after you record one.
         </p>

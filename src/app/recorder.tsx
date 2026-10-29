@@ -53,7 +53,10 @@ export default function Recorder({
   const [transcript, setTranscript] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
   const [sortState, setSortState] = useState<SortState>("idle");
-  const [cards, setCards] = useState<{ id: string }[]>([]);
+  const [cards, setCards] = useState<
+    { id: string; details?: { duplicate_of?: unknown } | null }[]
+  >([]);
+  const repeats = cards.filter((c) => c.details?.duplicate_of).length;
   const [sortError, setSortError] = useState<string | null>(null);
 
   // The note being saved. It's kept on the phone first, so "Try again" never saves it twice.
@@ -390,8 +393,9 @@ export default function Recorder({
 
       {sortState === "done" && cards.length > 0 && (
         <p className="text-center font-semibold">
-          Found {cards.length} {cards.length === 1 ? "thing" : "things"}. Check{" "}
-          {cards.length === 1 ? "it" : "them"} below.
+          {repeats === cards.length
+            ? "This looks like a repeat of something already in Yarn. Check below."
+            : `Found ${cards.length} ${cards.length === 1 ? "thing" : "things"}. Check ${cards.length === 1 ? "it" : "them"} below.`}
         </p>
       )}
 

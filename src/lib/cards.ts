@@ -1,3 +1,5 @@
+import type { DuplicateOf } from "./duplicates";
+
 // How each kind of card is named and coloured. Class names are written out in full so Tailwind sees them.
 export const CARD_LABEL: Record<string, string> = {
   job: "New job",
@@ -34,6 +36,7 @@ export type CardDetails = {
     nicknames?: string[];
   } | null;
   client_options?: { id: string; name: string }[];
+  duplicate_of?: DuplicateOf | null;
 };
 
 // A card waiting on the home page, as the screen needs it.
