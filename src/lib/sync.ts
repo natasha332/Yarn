@@ -69,8 +69,23 @@ export async function syncNote(note: PendingNote): Promise<SyncResult> {
   }
 }
 
-async function requestTranscript(captureId: string) {
-  await fetch("/api/transcribe", {
+// Write a note down and, if there are words, sort them into cards. Quiet: used when nobody is watching.
+export async function requestTranscript(captureId: string) {
+  try {
+    const res = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ captureId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.transcript) await requestSort(captureId);
+  } catch {
+    /* the Recent notes list offers "Write it down" if this didn't happen */
+  }
+}
+
+export async function requestSort(captureId: string) {
+  await fetch("/api/sort", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ captureId }),

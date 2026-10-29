@@ -8,6 +8,8 @@ import {
   queueChanged,
   type PendingNote,
 } from "@/lib/offline-queue";
+import { CARD_LABEL, CARD_TEXT_CLASS, type CardRow } from "@/lib/cards";
+import { formatClock, formatDay } from "@/lib/format";
 import { syncNote } from "@/lib/sync";
 
 // Longest single note. Keeps the file well under the 25 MB transcription limit.
@@ -24,6 +26,7 @@ const MIME_TYPES = [
 type Phase = "idle" | "starting" | "recording" | "recorded";
 type SaveState = "idle" | "saving" | "saved" | "waiting";
 type TranscribeState = "idle" | "working" | "done" | "failed";
+type SortState = "idle" | "working" | "done" | "failed";
 
 const nowMs = () => Date.now();
 
@@ -51,6 +54,9 @@ export default function Recorder({
     useState<TranscribeState>("idle");
   const [transcript, setTranscript] = useState<string | null>(null);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
+  const [sortState, setSortState] = useState<SortState>("idle");
+  const [cards, setCards] = useState<CardRow[]>([]);
+  const [sortError, setSortError] = useState<string | null>(null);
 
   // The note being saved. It's kept on the phone first, so "Try again" never saves it twice.
   const noteRef = useRef<PendingNote | null>(null);
@@ -94,6 +100,9 @@ export default function Recorder({
     setTranscribeState("idle");
     setTranscript(null);
     setTranscribeError(null);
+    setSortState("idle");
+    setCards([]);
+    setSortError(null);
     noteRef.current = null;
 
     if (
@@ -186,6 +195,33 @@ export default function Recorder({
     }
   }
 
+  // Ask the server to sort the words into cards for you to check.
+  const sortIntoCards = useCallback(async () => {
+    const id = noteRef.current?.id;
+    if (!id) return;
+    setSortState("working");
+    setSortError(null);
+    try {
+      const res = await fetch("/api/sort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captureId: id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      setCards(data.cards ?? []);
+      setSortState("done");
+    } catch (err) {
+      setSortError(
+        err instanceof Error && err.message !== "Failed to fetch"
+          ? err.message
+          : "Couldn't reach Yarn. Check your signal and try again.",
+      );
+      setSortState("failed");
+    }
+    router.refresh();
+  }, [router]);
+
   // Ask the server to turn the saved recording into words.
   const transcribe = useCallback(async () => {
     const id = noteRef.current?.id;
@@ -204,6 +240,7 @@ export default function Recorder({
       setTranscript(data.transcript ?? "");
       setTranscribeState("done");
       router.refresh(); // so the new note shows in the Recent notes list
+      if (data.transcript) void sortIntoCards();
     } catch (err) {
       setTranscribeError(
         err instanceof Error && err.message !== "Failed to fetch"
@@ -213,7 +250,7 @@ export default function Recorder({
       setTranscribeState("failed");
       router.refresh();
     }
-  }, [router]);
+  }, [router, sortIntoCards]);
 
   // The note on screen was waiting on the phone and has just gone up: carry on from here.
   useEffect(() => {
@@ -342,6 +379,74 @@ export default function Recorder({
               I didn&apos;t catch anything. Try again a bit closer to the phone.
             </p>
           )}
+        </div>
+      )}
+
+      {sortState === "working" && (
+        <p className="text-muted">Sorting it into cards…</p>
+      )}
+
+      {sortState === "done" && cards.length === 0 && (
+        <p className="text-muted">Nothing to sort in this one.</p>
+      )}
+
+      {sortState === "done" && cards.length > 0 && (
+        <div className="flex w-full flex-col gap-3">
+          <p className="font-semibold text-muted">
+            Found {cards.length} {cards.length === 1 ? "thing" : "things"}:
+          </p>
+          {cards.map((c) => (
+            <div
+              key={c.id}
+              className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-4"
+            >
+              <span
+                className={`text-xs font-bold uppercase tracking-wide ${CARD_TEXT_CLASS[c.type] ?? ""}`}
+              >
+                {CARD_LABEL[c.type] ?? c.type}
+              </span>
+              <span className="text-lg font-semibold">{c.title}</span>
+              {(c.due_date || c.start_time) && (
+                <span className="font-mono text-sm text-muted">
+                  {[
+                    c.due_date && formatDay(c.due_date),
+                    c.start_time && formatClock(c.start_time),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              )}
+              {c.details?.new_client?.name && (
+                <span className="text-muted">
+                  Client: {c.details.new_client.name} (new)
+                </span>
+              )}
+              {c.details?.address && (
+                <span className="text-muted">{c.details.address}</span>
+              )}
+              {!!c.details?.client_options?.length && (
+                <span className="text-muted">
+                  Which client?{" "}
+                  {c.details.client_options.map((o) => o.name).join(" or ")}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {sortState === "failed" && (
+        <div className="flex w-full flex-col gap-2">
+          <p role="alert" className="text-center text-variation">
+            {sortError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void sortIntoCards()}
+            className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+          >
+            Try again
+          </button>
         </div>
       )}
 

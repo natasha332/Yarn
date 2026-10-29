@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { requestSort } from "@/lib/sync";
 
 // For a note that was saved but never got written down (a bad signal, say).
 export default function WriteItDown({ captureId }: { captureId: string }) {
@@ -20,6 +21,7 @@ export default function WriteItDown({ captureId }: { captureId: string }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      if (data.transcript) await requestSort(captureId);
     } catch (err) {
       setError(
         err instanceof Error && err.message !== "Failed to fetch"
