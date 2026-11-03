@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/token-crypto";
 import { dateIn, formatLongDay } from "@/lib/format";
 import Flash from "./flash";
+import TestEmail from "./test-email";
 
 async function disconnectGoogle() {
   "use server";
@@ -218,6 +219,8 @@ async function BriefingCard({ result }: { result?: string }) {
           </p>
         )}
       </form>
+
+      <TestEmail />
     </section>
   );
 }
