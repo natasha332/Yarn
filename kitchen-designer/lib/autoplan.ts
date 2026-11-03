@@ -39,7 +39,7 @@ function fillCabs(gap: number): CabinetInput[] {
   );
 }
 
-export function autoPlan(room: Room, shape: LayoutShape, a: Appliances): CabinetInput[] {
+export function autoPlan(room: Room, shape: LayoutShape, a: Appliances, cornerSize = 0): CabinetInput[] {
   seq = 0;
   const fridge = make("fridge", a.fridge.width, "Fridge space", a.fridge.height);
 
@@ -51,7 +51,7 @@ export function autoPlan(room: Room, shape: LayoutShape, a: Appliances): Cabinet
   const dw = make("dishwasher", a.dishwasher.width);
 
   // Work out total wall length, using the same runs the layout will use
-  const runs = runDefs(shape, room, cornerDepthFor([cooktop, sink, dw]));
+  const runs = runDefs(shape, room, cornerDepthFor([cooktop, sink, dw]), cornerSize);
 
   const items = [fridge, pantry, tower, cooktop, underOven, sink, dw].filter(Boolean) as CabinetInput[];
 
@@ -95,7 +95,7 @@ export function autoPlan(room: Room, shape: LayoutShape, a: Appliances): Cabinet
   // Wall cupboards: build design to see where everything landed, then fill the free spans
   const hood = make("rangehood", a.rangehood.width);
   const floorOnly = [...out, hood];
-  const d = buildDesign({ room, shape, cabinets: floorOnly });
+  const d = buildDesign({ room, shape, cabinets: floorOnly, cornerSize });
   const wallCabs: CabinetInput[] = [hood];
   for (const run of d.runs) {
     const blocked: [number, number][] = [

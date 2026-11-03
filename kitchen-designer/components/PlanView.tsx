@@ -22,6 +22,13 @@ export default function PlanView({ room, design, selectedId, onSelect }: { room:
       aria-label="Floor plan"
     >
       <rect x={0} y={0} width={room.width} height={room.depth} fill="#fafafa" stroke="#333" strokeWidth={30} />
+      {design.corners.map((c, i) => (
+        <g key={`corner${i}`}>
+          <rect x={c.x} y={c.y} width={c.size} height={c.size} fill="#e3cfa6" stroke="#555" strokeWidth={8} />
+          <line x1={c.x} y1={c.y} x2={c.x + c.size} y2={c.y + c.size} stroke="#999" strokeWidth={5} />
+          <text x={c.x + c.size / 2} y={c.y + c.size / 2} fontSize={60} textAnchor="middle" dominantBaseline="middle">Corner</text>
+        </g>
+      ))}
       {design.runs.flatMap((r) => [
         ...r.base.map((p, i) => (
           <g key={`${r.name}-b${i}`} onClick={() => onSelect(p.cabinet.id)} style={{ cursor: "pointer" }}>

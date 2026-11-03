@@ -34,6 +34,13 @@ export interface Request {
   room: Room;
   shape: LayoutShape;
   cabinets: CabinetInput[];
+  cornerSize?: number; // 0 / undefined = no corner cupboards
+}
+
+export interface Corner {
+  x: number; // plan-view square, room origin = back-left corner
+  y: number;
+  size: number;
 }
 
 export type RunName = "Back wall" | "Right wall" | "Left wall";
@@ -59,6 +66,8 @@ export interface Run {
   name: RunName;
   start: number; // mm from the room corner where usable length begins
   length: number; // usable length
+  cornerBefore: number; // size of a corner cupboard just before the run (0 if none)
+  cornerAfter: number; // ...and just after it
   base: Placed[];
   wall: Placed[];
   fillers: Filler[];
@@ -66,6 +75,7 @@ export interface Run {
 
 export interface Design {
   runs: Run[];
+  corners: Corner[];
   warnings: string[];
 }
 
@@ -95,33 +105,30 @@ export const isFloorUnit = (t: CabinetType) => !isWallUnit(t);
 export const bottomOf = (t: CabinetType) => (t === "rangehood" ? HOOD_BOTTOM : WALL_CAB_BOTTOM);
 export const isTall = (t: CabinetType) => t === "fridge" || t === "tall";
 
-export function runDefs(shape: LayoutShape, room: Room, cornerDepth: number) {
-  const defs: { name: RunName; start: number; length: number }[] = [];
+export function runDefs(
+  shape: LayoutShape,
+  room: Room,
+  cornerDepth: number,
+  cornerSize = 0,
+) {
+  type Def = { name: RunName; start: number; length: number; cornerBefore: number; cornerAfter: number };
+  const defs: Def[] = [];
+  const C = cornerSize;
   if (shape === "straight") {
-    defs.push({ name: "Back wall", start: 0, length: room.width });
+    defs.push({ name: "Back wall", start: 0, length: room.width, cornerBefore: 0, cornerAfter: 0 });
   } else if (shape === "l-shape") {
-    defs.push({ name: "Back wall", start: 0, length: room.width });
-    defs.push({
-      name: "Right wall",
-      start: cornerDepth,
-      length: room.depth - cornerDepth,
-    });
+    if (C > 0) {
+      defs.push({ name: "Back wall", start: 0, length: room.width - C, cornerBefore: 0, cornerAfter: C });
+      defs.push({ name: "Right wall", start: C, length: room.depth - C, cornerBefore: C, cornerAfter: 0 });
+    } else {
+      defs.push({ name: "Back wall", start: 0, length: room.width, cornerBefore: 0, cornerAfter: 0 });
+      defs.push({ name: "Right wall", start: cornerDepth, length: room.depth - cornerDepth, cornerBefore: 0, cornerAfter: 0 });
+    }
   } else {
-    defs.push({
-      name: "Back wall",
-      start: cornerDepth,
-      length: room.width - cornerDepth * 2,
-    });
-    defs.push({
-      name: "Right wall",
-      start: cornerDepth,
-      length: room.depth - cornerDepth,
-    });
-    defs.push({
-      name: "Left wall",
-      start: cornerDepth,
-      length: room.depth - cornerDepth,
-    });
+    const c = C > 0 ? C : cornerDepth;
+    defs.push({ name: "Back wall", start: c, length: room.width - c * 2, cornerBefore: C, cornerAfter: C });
+    defs.push({ name: "Right wall", start: c, length: room.depth - c, cornerBefore: C, cornerAfter: 0 });
+    defs.push({ name: "Left wall", start: c, length: room.depth - c, cornerBefore: C, cornerAfter: 0 });
   }
   return defs;
 }
@@ -160,7 +167,7 @@ export function buildDesign(req: Request): Design {
   const wall = req.cabinets.filter((c) => isWallUnit(c.type));
 
   const cornerDepth = cornerDepthFor(req.cabinets);
-  const defs = runDefs(shape, room, cornerDepth);
+  const defs = runDefs(shape, room, cornerDepth, req.cornerSize ?? 0);
 
   const runs: Run[] = defs.map((d) => ({
     ...d,
@@ -273,14 +280,23 @@ export function buildDesign(req: Request): Design {
     }
   }
 
-  return { runs, warnings };
+  const C = req.cornerSize ?? 0;
+  const corners: Corner[] = [];
+  if (C > 0 && shape !== "straight") {
+    corners.push({ x: room.width - C, y: 0, size: C });
+    if (shape === "u-shape") corners.push({ x: 0, y: 0, size: C });
+    if (C * 2 > room.width) warnings.push("Corner cupboards are too big for this room.");
+  }
+
+  return { runs, corners, warnings };
 }
 
 export function cutListSummary(design: Design) {
-  const lines: { run: string; label: string; type: CabinetType; w: number; h: number; d: number }[] = [];
+  const lines: { id: string; run: string; label: string; type: CabinetType; w: number; h: number; d: number }[] = [];
   for (const r of design.runs)
     for (const p of [...r.base, ...r.wall])
       lines.push({
+        id: p.cabinet.id,
         run: r.name,
         label: p.cabinet.label,
         type: p.cabinet.type,

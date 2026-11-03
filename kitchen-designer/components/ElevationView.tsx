@@ -21,8 +21,16 @@ export default function ElevationView({ run, room, selectedId, onSelect }: { run
       <figcaption className="mb-1 font-semibold">
         {run.name} <span className="font-normal text-neutral-500">({run.length}mm usable)</span>
       </figcaption>
-      <svg viewBox={`${-pad} ${-pad} ${run.length + pad * 2} ${H + pad * 2}`} className="w-full rounded-lg border bg-white" role="img" aria-label={`${run.name} elevation`}>
-        <rect x={0} y={0} width={run.length} height={H} fill="#fafafa" stroke="#333" strokeWidth={14} />
+      <svg viewBox={`${-run.cornerBefore - pad} ${-pad} ${run.length + run.cornerBefore + run.cornerAfter + pad * 2} ${H + pad * 2}`} className="w-full rounded-lg border bg-white" role="img" aria-label={`${run.name} elevation`}>
+        <rect x={-run.cornerBefore} y={0} width={run.length + run.cornerBefore + run.cornerAfter} height={H} fill="#fafafa" stroke="#333" strokeWidth={14} />
+        {[[-run.cornerBefore, run.cornerBefore], [run.length, run.cornerAfter]].filter(([, w]) => w > 0).map(([x, w], i) => (
+          <g key={`corner${i}`}>
+            <rect x={x} y={floorY(KICK + 720 + BENCHTOP)} width={w} height={720 + BENCHTOP} fill="#e3cfa6" stroke="#555" strokeWidth={6} />
+            <rect x={x} y={floorY(KICK)} width={w} height={KICK} fill="#444" />
+            <rect x={x} y={floorY(bottomOf("wall") + 720)} width={w} height={720} fill="#efe3cc" stroke="#555" strokeWidth={6} strokeDasharray="30 18" />
+            <text x={x + w / 2} y={floorY(KICK + 360)} fontSize={60} textAnchor="middle">Corner</text>
+          </g>
+        ))}
         {run.base.map((p, i) => {
           const c = p.cabinet;
           const tall = isTall(c.type);
