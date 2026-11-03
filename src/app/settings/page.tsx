@@ -5,6 +5,7 @@ import { googleConfig, revokeToken } from "@/lib/google";
 import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/token-crypto";
 import { dateIn, formatLongDay } from "@/lib/format";
+import Flash from "./flash";
 
 async function disconnectGoogle() {
   "use server";
@@ -151,12 +152,6 @@ async function BriefingCard({ result }: { result?: string }) {
     <section className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
       <h2 className="font-display text-2xl font-bold leading-none">Daily emails</h2>
 
-      {note && (
-        <p role="status" className={note.ok ? "text-invoice" : "text-variation"}>
-          {note.text}
-        </p>
-      )}
-
       <form action={saveBriefing} className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <label className="flex min-h-12 items-center gap-3 font-semibold">
@@ -214,6 +209,14 @@ async function BriefingCard({ result }: { result?: string }) {
         </p>
 
         <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">Save</button>
+
+        {/* Under the button, so it is on screen right after you tap Save. */}
+        {note && (
+          <p role="status" className={`font-semibold ${note.ok ? "text-invoice" : "text-variation"}`}>
+            {note.ok ? "✓ " : ""}
+            {note.text}
+          </p>
+        )}
       </form>
     </section>
   );
@@ -225,8 +228,10 @@ async function Content({
   searchParams: Promise<{ google?: string; saved?: string }>;
 }) {
   const { google, saved } = await searchParams;
+  const flash = saved ? SAVED[saved] : google ? NOTES[google] : undefined;
   return (
     <>
+      <Flash message={flash ? `${flash.ok ? "✓" : "⚠"} ${flash.text}` : null} />
       <GoogleCard result={google} />
       <BriefingCard result={saved} />
     </>
