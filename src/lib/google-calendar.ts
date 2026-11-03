@@ -110,3 +110,46 @@ export async function deleteEvent(accessToken: string, eventId: string): Promise
   if (res.ok || res.status === 404 || res.status === 410) return { ok: true }; // already gone is fine
   return failure(res);
 }
+
+// ---- Reading her calendar (for the morning briefing and wrap-up) ----
+
+export type GoogleEvent = {
+  id: string;
+  summary?: string;
+  location?: string;
+  status?: string; // "confirmed" | "tentative" | "cancelled"
+  transparency?: string; // "transparent" = shown as free
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  attendees?: { self?: boolean; responseStatus?: string }[];
+};
+
+// Events between two moments on her main calendar, each recurring event as its own occurrence.
+// Gives up quietly after 8 seconds: an email without them is better than no email.
+export async function listEvents(accessToken: string, timeMin: Date, timeMax: Date): Promise<GoogleEvent[]> {
+  const url = new URL(`${API}/calendars/primary/events`);
+  url.search = new URLSearchParams({
+    timeMin: timeMin.toISOString(),
+    timeMax: timeMax.toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "100",
+  }).toString();
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`Google said ${res.status}`);
+  const body = (await res.json()) as { items?: GoogleEvent[] };
+  return body.items ?? [];
+}
+
+// Only the ones worth putting in an email: has a start time (no all-day), not cancelled,
+// not shown as "free", not declined. Events Yarn made itself are dropped (they're already listed).
+export function worthListing(e: GoogleEvent, yarnEventIds: Set<string>): boolean {
+  if (!e.start?.dateTime) return false;
+  if (e.status === "cancelled") return false;
+  if (e.transparency === "transparent") return false;
+  if (e.attendees?.some((a) => a.self && a.responseStatus === "declined")) return false;
+  return !yarnEventIds.has(e.id);
+}

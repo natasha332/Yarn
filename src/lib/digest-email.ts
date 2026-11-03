@@ -17,12 +17,13 @@ function overdue(i: DigestItem, today: string) {
   return i.date && i.date < today ? `overdue, was ${formatDay(i.date)}` : null;
 }
 
-type Section = { title: string; empty: string; rows: { lead?: string; main: string; sub: string[] }[] };
+type Section = { title: string; empty: string; rows: { lead?: string; main: string; tag?: string; sub: string[] }[] };
 
 function sections(kind: DigestKind, d: Digest): Section[] {
   const booking = (i: DigestItem) => ({
     lead: time(i),
     main: i.title,
+    tag: i.source === "calendar" ? "Calendar" : undefined,
     sub: [i.who, i.address ?? ""].filter(Boolean),
   });
   const todo = (i: DigestItem) => ({
@@ -32,7 +33,7 @@ function sections(kind: DigestKind, d: Digest): Section[] {
 
   if (kind === "morning") {
     return [
-      { title: "Today's bookings", empty: "Nothing booked for today.", rows: d.schedule.map(booking) },
+      { title: "Today's schedule", empty: "Nothing booked for today.", rows: d.schedule.map(booking) },
       { title: "To-dos and follow-ups", empty: "Nothing to do. Nice.", rows: d.todos.map(todo) },
     ];
   }
@@ -47,7 +48,7 @@ export function renderDigest(kind: DigestKind, d: Digest, opts: { businessName: 
   const heading = kind === "morning" ? `Today, ${formatLongDay(d.today)}` : `Wrap-up, ${formatLongDay(d.today)}`;
   const subject =
     kind === "morning"
-      ? `Today, ${formatDay(d.today)}: ${d.schedule.length ? plural(d.schedule.length, "booking") : "nothing booked"}, ${plural(d.todos.length, "to-do")}`
+      ? `Today, ${formatDay(d.today)}: ${d.schedule.length ? plural(d.schedule.length, "appointment") : "nothing booked"}, ${plural(d.todos.length, "to-do")}`
       : `Wrap-up, ${formatDay(d.today)}: ${d.doneToday.length} done, ${d.todos.length} still open`;
   const secs = sections(kind, d);
   const waiting = d.waiting
@@ -62,7 +63,7 @@ export function renderDigest(kind: DigestKind, d: Digest, opts: { businessName: 
     ...secs.flatMap((s) => [
       s.title.toUpperCase(),
       ...(s.rows.length
-        ? s.rows.map((r) => `- ${r.lead ? `${r.lead}  ` : ""}${r.main}${r.sub.length ? ` (${r.sub.join(", ")})` : ""}`)
+        ? s.rows.map((r) => `- ${r.lead ? `${r.lead}  ` : ""}${r.main}${r.tag ? ` [${r.tag}]` : ""}${r.sub.length ? ` (${r.sub.join(", ")})` : ""}`)
         : [s.empty]),
       "",
     ]),
@@ -85,7 +86,9 @@ export function renderDigest(kind: DigestKind, d: Digest, opts: { businessName: 
           .map(
             (r) => `<tr><td style="padding:12px 14px;border-top:1px solid #eef0ee">${
               r.lead ? `<span style="display:inline-block;min-width:92px;color:#5b6468;font-size:13px">${esc(r.lead)}</span>` : ""
-            }<b>${esc(r.main)}</b>${r.sub.map((x) => `<br><span style="color:#5b6468;font-size:14px">${esc(x)}</span>`).join("")}</td></tr>`,
+            }<b>${esc(r.main)}</b>${
+              r.tag ? ` <span style="display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;background:#eef0ee;color:#5b6468;font-size:11px;font-weight:700;vertical-align:middle">${esc(r.tag)}</span>` : ""
+            }${r.sub.map((x) => `<br><span style="color:#5b6468;font-size:14px">${esc(x)}</span>`).join("")}</td></tr>`,
           )
           .join("")}</table>`
       : `<p style="margin:0;padding:12px 14px;background:#fff;border:1px dashed #d9dedb;border-radius:12px;color:#5b6468">${esc(s.empty)}</p>`
