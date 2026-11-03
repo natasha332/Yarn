@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import DateField from "../date-field";
 import { formatClock, formatDay } from "@/lib/format";
+import { syncBooking, syncNote } from "@/lib/google-sync";
 import { showToast } from "@/lib/toast";
 
 const inputClass =
@@ -59,7 +60,8 @@ export default function BookingActions({
     const nowWhen = [formatDay(newDate), newStart && formatClock(newStart)]
       .filter(Boolean)
       .join(" · ");
-    showToast(`✓ Moved “${title}” to ${nowWhen}`);
+    const google = syncNote((await syncBooking(id, false)).status);
+    showToast(`✓ Moved “${title}” to ${nowWhen}${google ? ` · ${google}` : ""}`);
     setMoving(false);
     setBusy(false);
     router.refresh();
@@ -77,7 +79,8 @@ export default function BookingActions({
       setBusy(false);
       return;
     }
-    showToast(`✓ Cancelled “${title}”`);
+    const google = syncNote((await syncBooking(id, false)).status);
+    showToast(`✓ Cancelled “${title}”${google ? ` · ${google}` : ""}`);
     setBusy(false);
     router.refresh();
   }

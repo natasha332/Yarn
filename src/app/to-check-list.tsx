@@ -14,6 +14,8 @@ import {
   type ToCheckGroup,
 } from "@/lib/cards";
 import { formatClock, formatDay, formatWhen } from "@/lib/format";
+import { syncBooking, syncToast } from "@/lib/google-sync";
+import { showToast } from "@/lib/toast";
 import { JOB_STATUSES, statusLabel } from "@/lib/jobs";
 
 const inputClass =
@@ -45,6 +47,15 @@ function needs(card: PendingCard): string | null {
     return card.details.client_options?.length
       ? "Choose the client"
       : "Needs a client";
+  }
+  return null;
+}
+
+// The booking in Google Calendar that confirming this card adds or changes, if any.
+function calendarTarget(card: PendingCard) {
+  if (card.type === "calendar") return { id: card.id, create: true };
+  if ((card.type === "reschedule" || card.type === "cancel") && card.details.target_item_id) {
+    return { id: card.details.target_item_id, create: false };
   }
   return null;
 }
@@ -91,6 +102,12 @@ export default function ToCheckList({
       setNotice(
         `✓ ${CARD_LABEL[card.type] ?? "Card"} confirmed: ${card.title}`,
       );
+      const target = calendarTarget(card);
+      if (target) {
+        // The pop-up, not the notice above: that disappears with the last card.
+        const google = syncToast((await syncBooking(target.id, target.create)).status);
+        if (google) showToast(google);
+      }
       router.refresh();
     }
     setBusy(null);
@@ -101,6 +118,7 @@ export default function ToCheckList({
     setNotice(null);
     let done = 0;
     let repeats = 0;
+    const targets: { id: string; create: boolean }[] = [];
     for (const card of [...group.cards].sort(
       (a, b) => a.position - b.position,
     )) {
@@ -111,6 +129,23 @@ export default function ToCheckList({
       if (needs(card)) continue; // leave the ones that still need something
       if (!(await confirm(card))) break;
       done++;
+      const target = calendarTarget(card);
+      if (target) targets.push(target);
+    }
+    // Then bring Google Calendar into line, one booking at a time.
+    let googled = 0;
+    let googleFailed = 0;
+    for (const t of targets) {
+      const { status } = await syncBooking(t.id, t.create);
+      if (status === "reconnect" || status === "error") googleFailed++;
+      else if (syncToast(status)) googled++;
+    }
+    if (googleFailed) {
+      showToast(
+        `⚠ Google Calendar missed ${googleFailed}, tap Try again on Today`,
+      );
+    } else if (googled) {
+      showToast("✓ Google Calendar updated");
     }
     const parts: string[] = [];
     if (done)

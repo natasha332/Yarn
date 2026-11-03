@@ -95,3 +95,18 @@ export async function revokeToken(refreshToken: string) {
     // Best effort: the connection is removed from Yarn either way.
   }
 }
+
+// Swaps the saved lasting key for a short-lived pass that works for about an hour.
+// "invalid_grant" means the connection was cancelled on Google's side: she needs to reconnect.
+export async function refreshAccessToken(
+  config: { clientId: string; clientSecret: string },
+  refreshToken: string,
+): Promise<{ accessToken?: string; error?: string }> {
+  const reply = await tokenRequest({
+    refresh_token: refreshToken,
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    grant_type: "refresh_token",
+  });
+  return { accessToken: reply.access_token, error: reply.access_token ? undefined : (reply.error ?? "no_token") };
+}

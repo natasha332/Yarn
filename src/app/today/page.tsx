@@ -12,6 +12,7 @@ import {
 } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import BookingActions from "./booking-actions";
+import GoogleStatus from "./google-status";
 import TickButton from "./tick-button";
 
 type Row = {
@@ -22,7 +23,12 @@ type Row = {
   start_time: string | null;
   end_time: string | null;
   created_at: string;
-  details: { address?: string | null; notes?: string | null } | null;
+  external_id: string | null;
+  details: {
+    address?: string | null;
+    notes?: string | null;
+    calendar_sync?: string | null;
+  } | null;
   clients: { name: string } | { name: string }[] | null;
   jobs: { name: string } | { name: string }[] | null;
 };
@@ -71,11 +77,11 @@ async function TodayContent() {
   const soon = addDays(today, 7);
   const supabase = await createClient();
 
-  const [{ data }, { count: waiting }] = await Promise.all([
+  const [{ data }, { count: waiting }, { data: google }] = await Promise.all([
     supabase
       .from("items")
       .select(
-        "id, type, title, due_date, start_time, end_time, created_at, details, clients(name), jobs(name)",
+        "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name), jobs(name)",
       )
       .eq("status", "confirmed")
       .order("created_at", { ascending: false })
@@ -84,7 +90,9 @@ async function TodayContent() {
       .from("items")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending"),
+    supabase.from("google_connections").select("business_id").maybeSingle(),
   ]);
+  const connected = !!google;
   const rows = (data ?? []) as Row[];
 
   const schedule = rows
@@ -112,6 +120,13 @@ async function TodayContent() {
       r.type === "note" &&
       dateIn(business.timezone, new Date(r.created_at)) === today,
   );
+
+  const googleState = (r: Row) =>
+    r.external_id
+      ? r.details?.calendar_sync
+        ? ("behind" as const)
+        : ("synced" as const)
+      : ("missing" as const);
 
   const who = (r: Row) =>
     [one(r.clients)?.name, one(r.jobs)?.name].filter(Boolean).join(" · ");
@@ -167,7 +182,10 @@ async function TodayContent() {
                     </span>
                   )}
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 flex flex-col">
+                  {connected && (
+                    <GoogleStatus id={r.id} state={googleState(r)} />
+                  )}
                   <BookingActions
                     id={r.id}
                     title={r.title}
@@ -265,7 +283,10 @@ async function TodayContent() {
                   <span className="font-semibold leading-snug">{r.title}</span>
                   {who(r) && <span className="text-muted">{who(r)}</span>}
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 flex flex-col">
+                  {connected && (
+                    <GoogleStatus id={r.id} state={googleState(r)} />
+                  )}
                   <BookingActions
                     id={r.id}
                     title={r.title}
