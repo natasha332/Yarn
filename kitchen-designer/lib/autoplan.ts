@@ -51,55 +51,46 @@ export function autoPlan(room: Room, shape: LayoutShape, a: Appliances): Cabinet
   const dw = make("dishwasher", a.dishwasher.width);
 
   // Work out total wall length, using the same runs the layout will use
-  const cabsForDepth = [cooktop, sink, dw];
-  const runs = runDefs(shape, room, cornerDepthFor(cabsForDepth));
-  const total = runs.reduce((n, r) => n + r.length, 0);
+  const runs = runDefs(shape, room, cornerDepthFor([cooktop, sink, dw]));
 
-  const tallStart = [fridge, pantry, tower].filter(Boolean) as CabinetInput[];
-  const mid = [cooktop, underOven].filter(Boolean) as CabinetInput[];
-  const end = [sink, dw];
-  const fixed = [...tallStart, ...mid, ...end].reduce((n, c) => n + c.width, 0);
-  const free = Math.max(0, total - fixed);
+  const items = [fridge, pantry, tower, cooktop, underOven, sink, dw].filter(Boolean) as CabinetInput[];
 
-  // Share spare space: a landing beside the cooktop, a gap between cooktop and sink, then the rest
-  const gapA = free >= 1200 ? 300 : 0; // landing beside the tall units
-  const gapB = Math.round((free - gapA) * 0.5 / 5) * 5; // between cooktop and sink
-  const gapC = free - gapA - gapB;
-
-  const seqList: (CabinetInput | { fill: number })[] = [
-    ...tallStart,
-    { fill: gapA },
-    ...mid,
-    { fill: gapB },
-    ...end,
-    { fill: gapC },
-  ];
-
-  // Walk along the runs so no cupboard straddles a corner
-  const out: CabinetInput[] = [];
+  // 1. Share the appliances out along the runs (nothing straddles a corner)
+  const perRun: CabinetInput[][] = runs.map(() => []);
   let ri = 0;
   let used = 0;
-  const space = () => (runs[ri] ? runs[ri].length - used : 0);
-  for (const item of seqList) {
-    if ("fill" in item) {
-      let n = item.fill;
-      while (n > 0 && ri < runs.length) {
-        const take = Math.min(n, space());
-        if (take >= 300) { out.push(...fillCabs(take)); used += take; n -= take; }
-        if (n > 0) { ri++; used = 0; }
-        else break;
-      }
-    } else {
-      while (ri < runs.length && used + item.width > runs[ri].length) {
-        // use up the rest of this run with ordinary cupboards, then move on
-        const gap = space();
-        if (gap >= 300) out.push(...fillCabs(gap));
-        ri++; used = 0;
-      }
-      out.push(item);
-      used += item.width;
-    }
+  for (const it of items) {
+    while (ri < runs.length - 1 && used + it.width > runs[ri].length) { ri++; used = 0; }
+    perRun[ri].push(it);
+    used += it.width;
   }
+
+  // 2. Spread each run's spare space into 1-3 proper cupboards, never tiny ones.
+  //    Preferred spots: between cooktop and sink, beside the cooktop, end of the run.
+  const out: CabinetInput[] = [];
+  runs.forEach((run, r) => {
+    const list = perRun[r];
+    const free = run.length - list.reduce((n, c) => n + c.width, 0);
+    const k = list.length;
+    const ci = list.indexOf(cooktop);
+    const si = list.indexOf(sink);
+    const prefs: number[] = [];
+    if (ci >= 0 && si >= 0) prefs.push(si > ci ? si : ci);
+    if (ci >= 0) prefs.push(si > ci || si < 0 ? ci : ci + 1);
+    prefs.push(k, 0);
+    const slots = prefs.filter((v, i) => prefs.indexOf(v) === i);
+    const m = free < 300 ? 0 : Math.max(1, Math.min(slots.length, Math.floor(free / 450), 3));
+    const size = new Map<number, number>();
+    if (m > 0) {
+      const share = Math.floor(free / m / 5) * 5;
+      slots.slice(0, m).forEach((slot, i) => size.set(slot, i === m - 1 ? free - share * (m - 1) : share));
+    }
+    for (let j = 0; j <= k; j++) {
+      const w = size.get(j) ?? 0;
+      if (w > 0) out.push(...fillCabs(w));
+      if (j < k) out.push(list[j]);
+    }
+  });
 
   // Wall cupboards: build design to see where everything landed, then fill the free spans
   const hood = make("rangehood", a.rangehood.width);
