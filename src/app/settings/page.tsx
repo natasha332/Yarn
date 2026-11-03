@@ -26,6 +26,36 @@ async function disconnectGoogle() {
   redirect("/settings?google=disconnected");
 }
 
+async function saveBriefing(formData: FormData) {
+  "use server";
+  const business = await requireBusiness();
+  const time = (key: string) => {
+    const value = String(formData.get(key) ?? "");
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+  };
+  const morning = time("morning_time");
+  const wrapup = time("wrapup_time");
+  if (!morning || !wrapup) redirect("/settings?saved=badtime");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("businesses")
+    .update({
+      morning_enabled: formData.get("morning_on") === "on",
+      morning_email_time: morning,
+      wrapup_mode: formData.get("wrapup_on") === "on" ? "end_of_day" : "off",
+      wrapup_time: wrapup,
+    })
+    .eq("id", business.id);
+  redirect(`/settings?saved=${error ? "failed" : "ok"}`);
+}
+
+const SAVED: Record<string, { ok: boolean; text: string }> = {
+  ok: { ok: true, text: "Saved." },
+  badtime: { ok: false, text: "Pick a time for each one, then save again." },
+  failed: { ok: false, text: "That didn't save. Try once more." },
+};
+
 const NOTES: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Connected. Yarn can now use your Google Calendar." },
   disconnected: { ok: true, text: "Disconnected. Yarn can no longer see your Google Calendar." },
@@ -98,9 +128,109 @@ async function GoogleCard({ result }: { result?: string }) {
   );
 }
 
-async function Content({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
-  const { google } = await searchParams;
-  return <GoogleCard result={google} />;
+const hhmm = (t: string | null | undefined, fallback: string) => (t ?? fallback).slice(0, 5);
+
+async function BriefingCard({ result }: { result?: string }) {
+  const business = await requireBusiness();
+  const supabase = await createClient();
+  const [{ data: settings }, { data: google }, { data: auth }] = await Promise.all([
+    supabase
+      .from("businesses")
+      .select("morning_enabled, morning_email_time, wrapup_mode, wrapup_time")
+      .eq("id", business.id)
+      .maybeSingle(),
+    supabase.from("google_connections").select("google_email").maybeSingle(),
+    supabase.auth.getUser(),
+  ]);
+  // Emails go to the Google account the calendar is connected to, or the login email if there isn't one.
+  const sendTo = google?.google_email ?? auth.user?.email ?? null;
+  const note = result ? SAVED[result] : undefined;
+  const box = "h-12 rounded-xl border border-line bg-bg px-3 text-base font-normal";
+
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
+      <h2 className="font-display text-2xl font-bold leading-none">Daily emails</h2>
+
+      {note && (
+        <p role="status" className={note.ok ? "text-invoice" : "text-variation"}>
+          {note.text}
+        </p>
+      )}
+
+      <form action={saveBriefing} className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <label className="flex min-h-12 items-center gap-3 font-semibold">
+            <input
+              type="checkbox"
+              name="morning_on"
+              defaultChecked={settings?.morning_enabled ?? true}
+              className="h-6 w-6 accent-[var(--accent)]"
+            />
+            Morning briefing
+          </label>
+          <p className="text-muted">Today&apos;s bookings, to-dos and anything waiting for you to check.</p>
+          <label className="flex flex-col gap-1 text-sm font-semibold">
+            Send at
+            <input
+              type="time"
+              name="morning_time"
+              required
+              defaultValue={hhmm(settings?.morning_email_time, "07:00")}
+              className={box}
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="flex min-h-12 items-center gap-3 font-semibold">
+            <input
+              type="checkbox"
+              name="wrapup_on"
+              defaultChecked={(settings?.wrapup_mode ?? "end_of_day") !== "off"}
+              className="h-6 w-6 accent-[var(--accent)]"
+            />
+            Day wrap-up
+          </label>
+          <p className="text-muted">What got done, what&apos;s still open, and tomorrow&apos;s bookings.</p>
+          <label className="flex flex-col gap-1 text-sm font-semibold">
+            Send at
+            <input
+              type="time"
+              name="wrapup_time"
+              required
+              defaultValue={hhmm(settings?.wrapup_time, "17:00")}
+              className={box}
+            />
+          </label>
+        </div>
+
+        <p className="text-muted">
+          Times are in your business timezone ({business.timezone}).{" "}
+          {sendTo ? (
+            <>
+              Emails go to <b className="text-ink">{sendTo}</b>.
+            </>
+          ) : null}
+        </p>
+
+        <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">Save</button>
+      </form>
+    </section>
+  );
+}
+
+async function Content({
+  searchParams,
+}: {
+  searchParams: Promise<{ google?: string; saved?: string }>;
+}) {
+  const { google, saved } = await searchParams;
+  return (
+    <>
+      <GoogleCard result={google} />
+      <BriefingCard result={saved} />
+    </>
+  );
 }
 
 export default function SettingsPage(props: PageProps<"/settings">) {
@@ -108,7 +238,7 @@ export default function SettingsPage(props: PageProps<"/settings">) {
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 p-4">
       <h1 className="font-display text-4xl font-bold leading-none">Settings</h1>
       <Suspense fallback={<p className="text-muted">One sec…</p>}>
-        <Content searchParams={props.searchParams as Promise<{ google?: string }>} />
+        <Content searchParams={props.searchParams as Promise<{ google?: string; saved?: string }>} />
       </Suspense>
     </main>
   );
