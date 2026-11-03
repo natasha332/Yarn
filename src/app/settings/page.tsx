@@ -4,7 +4,7 @@ import { requireBusiness } from "@/lib/business";
 import { googleConfig, revokeToken } from "@/lib/google";
 import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/token-crypto";
-import { dateIn, formatLongDay } from "@/lib/format";
+import { dateIn, formatDay, formatLongDay } from "@/lib/format";
 import Flash from "./flash";
 import TestEmail from "./test-email";
 
@@ -135,7 +135,7 @@ const hhmm = (t: string | null | undefined, fallback: string) => (t ?? fallback)
 async function BriefingCard({ result }: { result?: string }) {
   const business = await requireBusiness();
   const supabase = await createClient();
-  const [{ data: settings }, { data: google }, { data: auth }] = await Promise.all([
+  const [{ data: settings }, { data: google }, { data: auth }, { data: log }] = await Promise.all([
     supabase
       .from("businesses")
       .select("morning_enabled, morning_email_time, wrapup_mode, wrapup_time")
@@ -143,7 +143,22 @@ async function BriefingCard({ result }: { result?: string }) {
       .maybeSingle(),
     supabase.from("google_connections").select("google_email").maybeSingle(),
     supabase.auth.getUser(),
+    supabase
+      .from("digest_log")
+      .select("kind, local_date, status")
+      .order("local_date", { ascending: false })
+      .order("claimed_at", { ascending: false })
+      .limit(10),
   ]);
+  const lastOf = (kind: string) => log?.find((row) => row.kind === kind);
+  const lastLine = (label: string, row?: { local_date: string; status: string }) => {
+    if (!row) return `${label}: not sent yet`;
+    const when = formatDay(row.local_date);
+    if (row.status === "sent") return `${label}: ✓ sent ${when}`;
+    if (row.status === "failed") return `${label}: ⚠ ${when} didn't send, will try again`;
+    if (row.status === "skipped") return `${label}: ⚠ ${when} skipped, no email address`;
+    return `${label}: sending ${when}…`;
+  };
   // Emails go to the Google account the calendar is connected to, or the login email if there isn't one.
   const sendTo = google?.google_email ?? auth.user?.email ?? null;
   const note = result ? SAVED[result] : undefined;
@@ -219,6 +234,12 @@ async function BriefingCard({ result }: { result?: string }) {
           </p>
         )}
       </form>
+
+      <div className="flex flex-col gap-1 border-t border-line pt-4 text-sm text-muted">
+        <p className="font-semibold text-ink">Last sent</p>
+        <p>{lastLine("Morning briefing", lastOf("morning"))}</p>
+        <p>{lastLine("Day wrap-up", lastOf("wrapup"))}</p>
+      </div>
 
       <TestEmail />
     </section>

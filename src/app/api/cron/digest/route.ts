@@ -1,0 +1,37 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { NextResponse, type NextRequest } from "next/server";
+import { runDigests } from "@/lib/digest-run";
+import { sendEmail } from "@/lib/resend";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+// The timer calls this every 15 minutes (see netlify/functions/digest-cron.mts).
+// It is not for people: it only answers someone who knows CRON_SECRET.
+
+const sha = (s: string) => createHash("sha256").update(s).digest();
+
+async function handle(request: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  const given = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+  if (!secret || secret.length < 20 || !timingSafeEqual(sha(given), sha(secret))) {
+    return NextResponse.json({ error: "Not allowed." }, { status: 401 });
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return NextResponse.json({ error: "SUPABASE_SECRET_KEY isn't set." }, { status: 503 });
+  if (!process.env.RESEND_API_KEY) return NextResponse.json({ error: "RESEND_API_KEY isn't set." }, { status: 503 });
+
+  try {
+    const summary = await runDigests(admin, {
+      now: new Date(),
+      siteUrl: process.env.SITE_URL ?? request.nextUrl.origin,
+      send: sendEmail,
+    });
+    return NextResponse.json(summary);
+  } catch (e) {
+    console.error("Digest run failed:", e);
+    return NextResponse.json({ error: "The run failed." }, { status: 500 });
+  }
+}
+
+export const GET = handle;
+export const POST = handle;
