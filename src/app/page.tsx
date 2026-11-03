@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -81,6 +82,9 @@ export default function Home() {
         <Suspense fallback={<p className="font-mono text-xs text-muted">…</p>}>
           <WhoAmI />
         </Suspense>
+        <Link href="/settings" className="py-2 text-muted underline">
+          Settings
+        </Link>
         <LogOutButton action={logOut} />
       </div>
     </main>
