@@ -7,6 +7,8 @@ const COLOURS: Record<string, string> = {
   dishwasher: "#cfd8dc",
   fridge: "#c5cae9",
   tall: "#d7c0a0",
+  oven: "#e0e0e0",
+  rangehood: "none",
   wall: "none",
 };
 

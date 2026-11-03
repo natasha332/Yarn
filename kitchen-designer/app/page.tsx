@@ -5,6 +5,7 @@ import {
   CabinetInput, CabinetType, DEFAULTS, LayoutShape, Room,
   buildDesign, cutListSummary,
 } from "@/lib/kitchen";
+import { Appliances, DEFAULT_APPLIANCES, autoPlan } from "@/lib/autoplan";
 import PlanView from "@/components/PlanView";
 import ElevationView from "@/components/ElevationView";
 
@@ -20,12 +21,11 @@ const input = "w-full rounded-lg border border-neutral-300 px-3 py-3 text-lg";
 export default function Home() {
   const [room, setRoom] = useState<Room>({ width: 3600, depth: 3000, height: 2400 });
   const [shape, setShape] = useState<LayoutShape>("l-shape");
-  const [cabs, setCabs] = useState<CabinetInput[]>(() => [
-    mk("fridge"), mk("tall"), mk("base", 600), mk("base", 800), mk("cooktop"),
-    mk("sink"), mk("dishwasher"), mk("base", 450),
-    mk("wall", 600), mk("wall", 600), mk("wall", 900), mk("wall", 800),
-  ]);
-
+  const [app, setApp] = useState<Appliances>(DEFAULT_APPLIANCES);
+  const [cabs, setCabs] = useState<CabinetInput[]>(() =>
+    autoPlan({ width: 3600, depth: 3000, height: 2400 }, "l-shape", DEFAULT_APPLIANCES),
+  );
+  const redesign = () => { setCabs(autoPlan(room, shape, app)); setSelectedId(null); };
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = cabs.find((c) => c.id === selectedId) ?? null;
   const design = useMemo(() => buildDesign({ room, shape, cabinets: cabs }), [room, shape, cabs]);
@@ -58,7 +58,34 @@ export default function Home() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">2. Cupboards (mm)</h2>
+        <h2 className="text-lg font-semibold">2. Appliances (mm)</h2>
+        <p className="text-sm text-neutral-500">Enter the opening size each appliance needs. The program chooses all the other cupboards.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-sm">Fridge width
+            <input className={input} inputMode="numeric" value={app.fridge.width} onChange={(e) => setApp({ ...app, fridge: { ...app.fridge, width: num(e.target.value) } })} /></label>
+          <label className="text-sm">Fridge height
+            <input className={input} inputMode="numeric" value={app.fridge.height} onChange={(e) => setApp({ ...app, fridge: { ...app.fridge, height: num(e.target.value) } })} /></label>
+          <label className="text-sm">Oven width
+            <input className={input} inputMode="numeric" value={app.oven.width} onChange={(e) => setApp({ ...app, oven: { ...app.oven, width: num(e.target.value) } })} /></label>
+          <label className="text-sm">Oven position
+            <select className={input} value={app.oven.style} onChange={(e) => setApp({ ...app, oven: { ...app.oven, style: e.target.value as "tower" | "under-bench" } })}>
+              <option value="tower">In a tall tower</option>
+              <option value="under-bench">Under the bench</option>
+            </select></label>
+          <label className="text-sm">Cooktop width
+            <input className={input} inputMode="numeric" value={app.cooktop.width} onChange={(e) => setApp({ ...app, cooktop: { width: num(e.target.value) } })} /></label>
+          <label className="text-sm">Rangehood width
+            <input className={input} inputMode="numeric" value={app.rangehood.width} onChange={(e) => setApp({ ...app, rangehood: { width: num(e.target.value) } })} /></label>
+          <label className="text-sm">Dishwasher width
+            <input className={input} inputMode="numeric" value={app.dishwasher.width} onChange={(e) => setApp({ ...app, dishwasher: { width: num(e.target.value) } })} /></label>
+          <label className="flex items-center gap-2 pt-6 text-sm">
+            <input type="checkbox" className="h-6 w-6" checked={app.pantryTower} onChange={(e) => setApp({ ...app, pantryTower: e.target.checked })} /> Add a pantry tower
+          </label>
+        </div>
+        <button className="h-14 w-full rounded-lg bg-rose-600 text-lg font-semibold text-white" onClick={redesign}>Design my kitchen</button>
+        <details className="rounded-lg border p-2">
+          <summary className="cursor-pointer py-2 font-medium">All cupboards (advanced — edit or add by hand)</summary>
+          <div className="space-y-3 pt-2">
         {cabs.map((c) => (
           <div key={c.id} onClick={() => setSelectedId(c.id)} className="grid grid-cols-[1fr_1fr_1fr_3rem] items-end gap-2 rounded-lg border p-2">
             <label className="col-span-4 text-xs">
@@ -79,6 +106,8 @@ export default function Home() {
             <button key={t} className="rounded-lg bg-neutral-900 px-3 py-3 text-white" onClick={() => setCabs((cs) => [...cs, mk(t)])}>+ {DEFAULTS[t].label}</button>
           ))}
         </div>
+          </div>
+        </details>
       </section>
 
       {design.warnings.length > 0 && (

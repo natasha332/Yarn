@@ -1,4 +1,4 @@
-import { Run, Room, BENCHTOP, KICK, WALL_CAB_BOTTOM, isTall } from "@/lib/kitchen";
+import { Run, Room, BENCHTOP, KICK, bottomOf, isTall } from "@/lib/kitchen";
 
 const FILL: Record<string, string> = {
   base: "#e7d3b0",
@@ -7,6 +7,8 @@ const FILL: Record<string, string> = {
   dishwasher: "#cfd8dc",
   fridge: "#c5cae9",
   tall: "#d7c0a0",
+  oven: "#cfcfcf",
+  rangehood: "#b0bec5",
   wall: "#efe3cc",
 };
 
@@ -39,8 +41,8 @@ export default function ElevationView({ run, room, selectedId, onSelect }: { run
         ))}
         {run.wall.map((p, i) => (
           <g key={`w${i}`} onClick={() => onSelect(p.cabinet.id)} style={{ cursor: "pointer" }}>
-            <rect x={p.offset} y={floorY(WALL_CAB_BOTTOM + p.cabinet.height)} width={p.cabinet.width} height={p.cabinet.height} fill={FILL.wall} stroke={selectedId === p.cabinet.id ? "#e11d48" : "#555"} strokeWidth={selectedId === p.cabinet.id ? 20 : 6} />
-            <text x={p.offset + p.cabinet.width / 2} y={floorY(WALL_CAB_BOTTOM + p.cabinet.height / 2)} fontSize={Math.min(70, p.cabinet.width / 5)} textAnchor="middle">{p.cabinet.width}</text>
+            <rect x={p.offset} y={floorY(bottomOf(p.cabinet.type) + p.cabinet.height)} width={p.cabinet.width} height={p.cabinet.height} fill={FILL[p.cabinet.type]} stroke={selectedId === p.cabinet.id ? "#e11d48" : "#555"} strokeWidth={selectedId === p.cabinet.id ? 20 : 6} />
+            <text x={p.offset + p.cabinet.width / 2} y={floorY(bottomOf(p.cabinet.type) + p.cabinet.height / 2)} fontSize={Math.min(70, p.cabinet.width / 5)} textAnchor="middle">{p.cabinet.width}</text>
           </g>
         ))}
       </svg>

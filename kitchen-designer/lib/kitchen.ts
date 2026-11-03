@@ -9,7 +9,9 @@ export type CabinetType =
   | "dishwasher"
   | "fridge"
   | "tall"
-  | "wall";
+  | "oven"
+  | "wall"
+  | "rangehood";
 
 export type LayoutShape = "straight" | "l-shape" | "u-shape";
 
@@ -71,6 +73,7 @@ export interface Design {
 export const KICK = 150;
 export const BENCHTOP = 40;
 export const WALL_CAB_BOTTOM = 1450;
+export const HOOD_BOTTOM = 1560; // ~650mm above a 910mm bench
 
 export const DEFAULTS: Record<
   CabinetType,
@@ -82,23 +85,17 @@ export const DEFAULTS: Record<
   dishwasher: { label: "Dishwasher", height: 720, depth: 575, width: 600 },
   fridge: { label: "Fridge space", height: 1800, depth: 650, width: 900 },
   tall: { label: "Pantry / oven tower", height: 2100, depth: 575, width: 600 },
+  oven: { label: "Under-bench oven", height: 720, depth: 575, width: 600 },
   wall: { label: "Wall cupboard", height: 720, depth: 320, width: 600 },
+  rangehood: { label: "Rangehood", height: 500, depth: 500, width: 900 },
 };
 
-export const isFloorUnit = (t: CabinetType) => t !== "wall";
+export const isWallUnit = (t: CabinetType) => t === "wall" || t === "rangehood";
+export const isFloorUnit = (t: CabinetType) => !isWallUnit(t);
+export const bottomOf = (t: CabinetType) => (t === "rangehood" ? HOOD_BOTTOM : WALL_CAB_BOTTOM);
 export const isTall = (t: CabinetType) => t === "fridge" || t === "tall";
 
-const ORDER: Record<CabinetType, number> = {
-  fridge: 0,
-  tall: 1,
-  base: 2,
-  dishwasher: 3,
-  sink: 4,
-  cooktop: 5,
-  wall: 9,
-};
-
-function runDefs(shape: LayoutShape, room: Room, cornerDepth: number) {
+export function runDefs(shape: LayoutShape, room: Room, cornerDepth: number) {
   const defs: { name: RunName; start: number; length: number }[] = [];
   if (shape === "straight") {
     defs.push({ name: "Back wall", start: 0, length: room.width });
@@ -129,6 +126,13 @@ function runDefs(shape: LayoutShape, room: Room, cornerDepth: number) {
   return defs;
 }
 
+export function cornerDepthFor(cabs: CabinetInput[]) {
+  return Math.max(
+    575,
+    ...cabs.filter((c) => isFloorUnit(c.type) && !isTall(c.type)).map((c) => c.depth),
+  );
+}
+
 function toPlan(
   run: RunName,
   offset: number,
@@ -151,15 +155,11 @@ export function buildDesign(req: Request): Design {
     warnings.push("Room dimensions look too small — check they are in mm.");
   }
 
-  const floor = req.cabinets
-    .filter((c) => isFloorUnit(c.type))
-    .sort((a, b) => ORDER[a.type] - ORDER[b.type]);
-  const wall = req.cabinets.filter((c) => c.type === "wall");
+  // Cupboards are placed in the order given (the auto-planner decides the order)
+  const floor = req.cabinets.filter((c) => isFloorUnit(c.type));
+  const wall = req.cabinets.filter((c) => isWallUnit(c.type));
 
-  const cornerDepth = Math.max(
-    575,
-    ...floor.filter((c) => !isTall(c.type)).map((c) => c.depth),
-  );
+  const cornerDepth = cornerDepthFor(req.cabinets);
   const defs = runDefs(shape, room, cornerDepth);
 
   const runs: Run[] = defs.map((d) => ({
@@ -203,42 +203,44 @@ export function buildDesign(req: Request): Design {
     }
   });
 
-  // --- Wall cupboards: sit above the base run, never above tall units
-  let wi = 0;
-  const wUsed = runs.map(() => 0);
-  const blocked = (run: Run, from: number, to: number) =>
-    run.base.some(
-      (p) => isTall(p.cabinet.type) && from < p.offset + p.cabinet.width && to > p.offset,
-    );
+  // --- Rangehoods: centred over the cooktop in the same run
+  const taken: [number, number][][] = runs.map((r) =>
+    r.base.filter((p) => isTall(p.cabinet.type)).map((p) => [p.offset, p.offset + p.cabinet.width]),
+  );
+  for (const c of wall.filter((c) => c.type === "rangehood")) {
+    const ri2 = runs.findIndex((r) => r.base.some((p) => p.cabinet.type === "cooktop"));
+    if (ri2 < 0) {
+      warnings.push("Rangehood has no cooktop to sit above.");
+      continue;
+    }
+    const run = runs[ri2];
+    const ct = run.base.find((p) => p.cabinet.type === "cooktop")!;
+    const off = Math.round(ct.offset + (ct.cabinet.width - c.width) / 2);
+    run.wall.push({ cabinet: c, run: run.name, offset: off, ...toPlan(run.name, off, run.start, c, room) });
+    taken[ri2].push([off, off + c.width]);
+  }
 
-  for (const c of wall) {
+  // --- Wall cupboards: first free spot along the run, never above tall units or the hood
+  let wi = 0;
+  const wPos = runs.map(() => 0);
+  for (const c of wall.filter((c) => c.type === "wall")) {
     let placed = false;
     while (wi < runs.length && !placed) {
       const run = runs[wi];
-      // jump past tall units
-      let pos = wUsed[wi];
+      let pos = wPos[wi];
       let moved = true;
       while (moved) {
         moved = false;
-        for (const p of run.base) {
-          if (
-            isTall(p.cabinet.type) &&
-            pos < p.offset + p.cabinet.width &&
-            pos + c.width > p.offset
-          ) {
-            pos = p.offset + p.cabinet.width;
+        for (const [from, to] of taken[wi]) {
+          if (pos < to && pos + c.width > from) {
+            pos = to;
             moved = true;
           }
         }
       }
-      if (pos + c.width <= run.length && !blocked(run, pos, pos + c.width)) {
-        run.wall.push({
-          cabinet: c,
-          run: run.name,
-          offset: pos,
-          ...toPlan(run.name, pos, run.start, c, room),
-        });
-        wUsed[wi] = pos + c.width;
+      if (pos + c.width <= run.length) {
+        run.wall.push({ cabinet: c, run: run.name, offset: pos, ...toPlan(run.name, pos, run.start, c, room) });
+        wPos[wi] = pos + c.width;
         placed = true;
       } else {
         wi++;
@@ -255,7 +257,7 @@ export function buildDesign(req: Request): Design {
       ? isTall(c.type)
         ? c.height
         : KICK + c.height + BENCHTOP
-      : WALL_CAB_BOTTOM + c.height;
+      : bottomOf(c.type) + c.height;
     if (top > room.height) {
       warnings.push(
         `"${c.label}" reaches ${top}mm but the ceiling is ${room.height}mm.`,
