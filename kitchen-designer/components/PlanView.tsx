@@ -10,7 +10,7 @@ const COLOURS: Record<string, string> = {
   wall: "none",
 };
 
-export default function PlanView({ room, design }: { room: Room; design: Design }) {
+export default function PlanView({ room, design, selectedId, onSelect }: { room: Room; design: Design; selectedId: string | null; onSelect: (id: string) => void }) {
   const pad = 140;
   return (
     <svg
@@ -22,8 +22,8 @@ export default function PlanView({ room, design }: { room: Room; design: Design 
       <rect x={0} y={0} width={room.width} height={room.depth} fill="#fafafa" stroke="#333" strokeWidth={30} />
       {design.runs.flatMap((r) => [
         ...r.base.map((p, i) => (
-          <g key={`${r.name}-b${i}`}>
-            <rect x={p.x} y={p.y} width={p.w} height={p.h} fill={COLOURS[p.cabinet.type]} stroke="#555" strokeWidth={8} />
+          <g key={`${r.name}-b${i}`} onClick={() => onSelect(p.cabinet.id)} style={{ cursor: "pointer" }}>
+            <rect x={p.x} y={p.y} width={p.w} height={p.h} fill={COLOURS[p.cabinet.type]} stroke={selectedId === p.cabinet.id ? "#e11d48" : "#555"} strokeWidth={selectedId === p.cabinet.id ? 24 : 8} />
             <text
               x={p.x + p.w / 2}
               y={p.y + p.h / 2}
@@ -38,7 +38,7 @@ export default function PlanView({ room, design }: { room: Room; design: Design 
         )),
         // wall cupboards drawn dashed (they are above)
         ...r.wall.map((p, i) => (
-          <rect key={`${r.name}-w${i}`} x={p.x} y={p.y} width={p.w} height={p.h} fill="none" stroke="#777" strokeWidth={6} strokeDasharray="30 20" />
+          <rect key={`${r.name}-w${i}`} pointerEvents="none" x={p.x} y={p.y} width={p.w} height={p.h} fill="none" stroke={selectedId === p.cabinet.id ? "#e11d48" : "#777"} strokeWidth={selectedId === p.cabinet.id ? 20 : 6} strokeDasharray="30 20" />
         )),
       ])}
       <text x={room.width / 2} y={-50} fontSize={80} textAnchor="middle">{room.width}</text>

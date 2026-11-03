@@ -10,7 +10,7 @@ const FILL: Record<string, string> = {
   wall: "#efe3cc",
 };
 
-export default function ElevationView({ run, room }: { run: Run; room: Room }) {
+export default function ElevationView({ run, room, selectedId, onSelect }: { run: Run; room: Room; selectedId: string | null; onSelect: (id: string) => void }) {
   const H = room.height;
   const floorY = (z: number) => H - z; // z = height above floor
   const pad = 120;
@@ -26,8 +26,8 @@ export default function ElevationView({ run, room }: { run: Run; room: Room }) {
           const tall = isTall(c.type);
           const bodyBottom = tall ? 0 : KICK;
           return (
-            <g key={`b${i}`}>
-              <rect x={p.offset} y={floorY(bodyBottom + c.height)} width={c.width} height={c.height} fill={FILL[c.type]} stroke="#555" strokeWidth={6} />
+            <g key={`b${i}`} onClick={() => onSelect(c.id)} style={{ cursor: "pointer" }}>
+              <rect x={p.offset} y={floorY(bodyBottom + c.height)} width={c.width} height={c.height} fill={FILL[c.type]} stroke={selectedId === c.id ? "#e11d48" : "#555"} strokeWidth={selectedId === c.id ? 20 : 6} />
               {!tall && <rect x={p.offset} y={floorY(KICK)} width={c.width} height={KICK} fill="#444" />}
               {!tall && <rect x={p.offset} y={floorY(KICK + c.height + BENCHTOP)} width={c.width} height={BENCHTOP} fill="#8d6e63" />}
               <text x={p.offset + c.width / 2} y={floorY(bodyBottom + c.height / 2)} fontSize={Math.min(70, c.width / 5)} textAnchor="middle">{c.width}</text>
@@ -38,8 +38,8 @@ export default function ElevationView({ run, room }: { run: Run; room: Room }) {
           <rect key={`f${i}`} x={f.offset} y={floorY(KICK + 720 + BENCHTOP)} width={f.width} height={KICK + 720 + BENCHTOP} fill="#ddd" stroke="#999" strokeDasharray="20 12" strokeWidth={5} />
         ))}
         {run.wall.map((p, i) => (
-          <g key={`w${i}`}>
-            <rect x={p.offset} y={floorY(WALL_CAB_BOTTOM + p.cabinet.height)} width={p.cabinet.width} height={p.cabinet.height} fill={FILL.wall} stroke="#555" strokeWidth={6} />
+          <g key={`w${i}`} onClick={() => onSelect(p.cabinet.id)} style={{ cursor: "pointer" }}>
+            <rect x={p.offset} y={floorY(WALL_CAB_BOTTOM + p.cabinet.height)} width={p.cabinet.width} height={p.cabinet.height} fill={FILL.wall} stroke={selectedId === p.cabinet.id ? "#e11d48" : "#555"} strokeWidth={selectedId === p.cabinet.id ? 20 : 6} />
             <text x={p.offset + p.cabinet.width / 2} y={floorY(WALL_CAB_BOTTOM + p.cabinet.height / 2)} fontSize={Math.min(70, p.cabinet.width / 5)} textAnchor="middle">{p.cabinet.width}</text>
           </g>
         ))}
