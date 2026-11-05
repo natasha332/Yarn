@@ -8,11 +8,19 @@ export type SendResult =
   | { ok: true; id: string | null }
   | { ok: false; reason: "notset" | "rejected" | "error"; message: string };
 
+// "Yarn <briefing@mail.example.com>" -> "briefing@mail.example.com"
+export function senderAddress() {
+  const raw = process.env.EMAIL_FROM || DEFAULT_FROM;
+  return raw.match(/<([^>]+)>/)?.[1] ?? raw;
+}
+
 export async function sendEmail(mail: {
   to: string;
   subject: string;
   html: string;
   text: string;
+  fromName?: string; // the name people see, on the same sending address
+  replyTo?: string | null; // where their replies go
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, reason: "notset", message: "Email isn't set up on the server yet." };
@@ -22,7 +30,10 @@ export async function sendEmail(mail: {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: process.env.EMAIL_FROM || DEFAULT_FROM,
+        from: mail.fromName
+          ? `${mail.fromName.replace(/["<>\r\n]/g, "").trim()} <${senderAddress()}>`
+          : process.env.EMAIL_FROM || DEFAULT_FROM,
+        ...(mail.replyTo ? { reply_to: mail.replyTo } : {}),
         to: [mail.to],
         subject: mail.subject,
         html: mail.html,

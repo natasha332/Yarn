@@ -21,6 +21,8 @@ export default function BookingActions({
   start,
   end,
   timezone,
+  clientName,
+  canEmail,
 }: {
   id: string;
   title: string;
@@ -28,6 +30,8 @@ export default function BookingActions({
   start: string | null; // "09:00:00" from the database
   end: string | null;
   timezone: string;
+  clientName: string | null;
+  canEmail: boolean; // the client has an email address on file
 }) {
   const router = useRouter();
   const [moving, setMoving] = useState(false);
@@ -41,6 +45,30 @@ export default function BookingActions({
   const when = [formatDay(date), start && formatClock(start.slice(0, 5))]
     .filter(Boolean)
     .join(" · ");
+
+  // Writes "let the client know" as a card in To check. It never sends anything itself.
+  async function draftEmail(kind: "reschedule" | "cancel") {
+    if (!canEmail) return "";
+    try {
+      const res = await fetch("/api/email/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId: id,
+          kind,
+          oldDate: date,
+          oldStart: start ? start.slice(0, 5) : null,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (body?.status === "created" || body?.status === "exists") {
+        return ` · email to ${clientName?.split(" ")[0] ?? "client"} is ready to check`;
+      }
+    } catch {
+      // the move itself already worked; just no draft
+    }
+    return "";
+  }
 
   async function reschedule(e: React.FormEvent) {
     e.preventDefault();
@@ -61,7 +89,10 @@ export default function BookingActions({
       .filter(Boolean)
       .join(" · ");
     const google = syncNote((await syncBooking(id, false)).status);
-    showToast(`✓ Moved “${title}” to ${nowWhen}${google ? ` · ${google}` : ""}`);
+    const email = await draftEmail("reschedule");
+    showToast(
+      `✓ Moved “${title}” to ${nowWhen}${google ? ` · ${google}` : ""}${email}`,
+    );
     setMoving(false);
     setBusy(false);
     router.refresh();
@@ -80,7 +111,8 @@ export default function BookingActions({
       return;
     }
     const google = syncNote((await syncBooking(id, false)).status);
-    showToast(`✓ Cancelled “${title}”${google ? ` · ${google}` : ""}`);
+    const email = await draftEmail("cancel");
+    showToast(`✓ Cancelled “${title}”${google ? ` · ${google}` : ""}${email}`);
     setBusy(false);
     router.refresh();
   }

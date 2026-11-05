@@ -5,6 +5,8 @@ import { googleConfig, revokeToken } from "@/lib/google";
 import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/token-crypto";
 import { dateIn, formatDay, formatLongDay } from "@/lib/format";
+import { isEmail } from "@/lib/client-email";
+import { senderAddress } from "@/lib/resend";
 import Flash from "./flash";
 import TestEmail from "./test-email";
 
@@ -52,8 +54,28 @@ async function saveBriefing(formData: FormData) {
   redirect(`/settings?saved=${error ? "failed" : "ok"}`);
 }
 
+async function saveEmailIdentity(formData: FormData) {
+  "use server";
+  const business = await requireBusiness();
+  const text = (key: string, max: number) => String(formData.get(key) ?? "").trim().slice(0, max);
+  const replyTo = text("reply_to", 254);
+  if (replyTo && !isEmail(replyTo)) redirect("/settings?saved=badreply");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("businesses")
+    .update({
+      email_from_name: text("from_name", 80) || null,
+      email_reply_to: replyTo || null,
+      email_sign_off: text("sign_off", 500) || null,
+    })
+    .eq("id", business.id);
+  redirect(`/settings?saved=${error ? "failed" : "ok"}`);
+}
+
 const SAVED: Record<string, { ok: boolean; text: string }> = {
   ok: { ok: true, text: "Saved." },
+  badreply: { ok: false, text: "That reply-to email address doesn't look right." },
   badtime: { ok: false, text: "Pick a time for each one, then save again." },
   failed: { ok: false, text: "That didn't save. Try once more." },
 };
@@ -132,7 +154,7 @@ async function GoogleCard({ result }: { result?: string }) {
 
 const hhmm = (t: string | null | undefined, fallback: string) => (t ?? fallback).slice(0, 5);
 
-async function BriefingCard({ result }: { result?: string }) {
+async function BriefingCard() {
   const business = await requireBusiness();
   const supabase = await createClient();
   const [{ data: settings }, { data: google }, { data: auth }, { data: log }] = await Promise.all([
@@ -161,7 +183,6 @@ async function BriefingCard({ result }: { result?: string }) {
   };
   // Emails go to the Google account the calendar is connected to, or the login email if there isn't one.
   const sendTo = google?.google_email ?? auth.user?.email ?? null;
-  const note = result ? SAVED[result] : undefined;
   const box = "h-12 rounded-xl border border-line bg-bg px-3 text-base font-normal";
 
   return (
@@ -226,13 +247,6 @@ async function BriefingCard({ result }: { result?: string }) {
 
         <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">Save</button>
 
-        {/* Under the button, so it is on screen right after you tap Save. */}
-        {note && (
-          <p role="status" className={`font-semibold ${note.ok ? "text-invoice" : "text-variation"}`}>
-            {note.ok ? "✓ " : ""}
-            {note.text}
-          </p>
-        )}
       </form>
 
       <div className="flex flex-col gap-1 border-t border-line pt-4 text-sm text-muted">
@@ -242,6 +256,56 @@ async function BriefingCard({ result }: { result?: string }) {
       </div>
 
       <TestEmail />
+    </section>
+  );
+}
+
+async function ClientEmailCard() {
+  const business = await requireBusiness();
+  const supabase = await createClient();
+  const [{ data: settings }, { data: auth }, { data: person }] = await Promise.all([
+    supabase
+      .from("businesses")
+      .select("email_from_name, email_reply_to, email_sign_off")
+      .eq("id", business.id)
+      .maybeSingle(),
+    supabase.auth.getUser(),
+    supabase.from("users").select("name").maybeSingle(),
+  ]);
+  const box = "h-12 rounded-xl border border-line bg-bg px-3 text-base font-normal";
+  const loginEmail = auth.user?.email ?? "";
+  const defaultSignOff = [person?.name, business.name].filter(Boolean).join("\n");
+
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
+      <h2 className="font-display text-2xl font-bold leading-none">Emails to clients</h2>
+      <p className="text-muted">
+        When Yarn writes to a client for you (like &quot;your booking has moved&quot;), you read it and tap Send. It goes out
+        as <b className="text-ink">{settings?.email_from_name || business.name}</b> from{" "}
+        <span className="font-mono text-sm">{senderAddress()}</span>, and their replies come to you.
+      </p>
+      <form action={saveEmailIdentity} className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1 text-sm font-semibold">
+          Name clients see
+          <input name="from_name" maxLength={80} defaultValue={settings?.email_from_name ?? ""} placeholder={business.name} className={box} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-semibold">
+          Send their replies to
+          <input name="reply_to" type="email" maxLength={254} defaultValue={settings?.email_reply_to ?? ""} placeholder={loginEmail} className={box} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-semibold">
+          Sign-off
+          <textarea
+            name="sign_off"
+            rows={3}
+            maxLength={500}
+            defaultValue={settings?.email_sign_off ?? ""}
+            placeholder={defaultSignOff}
+            className="rounded-xl border border-line bg-bg px-3 py-2 text-base font-normal"
+          />
+        </label>
+        <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">Save</button>
+      </form>
     </section>
   );
 }
@@ -257,7 +321,8 @@ async function Content({
     <>
       <Flash message={flash ? `${flash.ok ? "✓" : "⚠"} ${flash.text}` : null} />
       <GoogleCard result={google} />
-      <BriefingCard result={saved} />
+      <BriefingCard />
+      <ClientEmailCard />
     </>
   );
 }

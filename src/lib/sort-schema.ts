@@ -11,6 +11,7 @@ export const CARD_TYPES = [
   "note",
   "reschedule",
   "cancel",
+  "email",
 ] as const;
 export const JOB_STATUS_VALUES = [
   "consultation",
@@ -44,6 +45,11 @@ const Card = z.object({
   belongs_to_card: z.number().int().nullable(), // 0-based position of the "job" card this goes with
   target_booking_id: z.string().nullable(), // "reschedule" and "cancel" cards: the id of the booking, from the bookings list
   target_options: z.array(z.string()), // ids of the bookings it could be, when two or more fit
+  email_kind: z.enum(["reschedule", "cancel", "other"]).nullable(), // "email" cards only
+  email_note: z.string().nullable(), // "email" cards about a move or cancel: the reason, as one friendly sentence
+  email_subject: z.string().nullable(), // "email" cards of kind "other"
+  email_body: z.string().nullable(), // "email" cards of kind "other": the message, without greeting or sign-off
+  goes_with_card: z.number().int().nullable(), // "email" cards: 0-based position of the reschedule or cancel card it tells the client about
 });
 
 export const SortResult = z.object({ cards: z.array(Card) });

@@ -14,6 +14,7 @@ import {
   type ToCheckGroup,
 } from "@/lib/cards";
 import { formatClock, formatDay, formatWhen } from "@/lib/format";
+import { isEmail } from "@/lib/client-email";
 import { syncBooking, syncToast } from "@/lib/google-sync";
 import { showToast } from "@/lib/toast";
 import { JOB_STATUSES, statusLabel } from "@/lib/jobs";
@@ -33,6 +34,11 @@ function bookingWhen(date: string | null, start: string | null) {
 
 // A card is ready to confirm when it has what it needs.
 function needs(card: PendingCard): string | null {
+  if (card.type === "email") {
+    const to = card.details.email?.to;
+    if (!to) return "Add an email address first";
+    return isEmail(to) ? null : "That email address doesn't look right";
+  }
   if (card.type === "reschedule" || card.type === "cancel") {
     if (!card.details.target_item_id) return "Choose which booking";
     if (card.type === "reschedule" && !card.due_date) return "Needs a new day";
@@ -60,6 +66,22 @@ function calendarTarget(card: PendingCard) {
   return null;
 }
 
+// Sends an email card through the server. Returns an error message, or null when it went.
+async function sendEmailCard(itemId: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId }),
+    });
+    const body = await res.json().catch(() => null);
+    if (body?.status === "sent") return null;
+    return body?.message ?? "Couldn't send that. Try again.";
+  } catch {
+    return "Couldn't reach Yarn. Check your signal and try again.";
+  }
+}
+
 export default function ToCheckList({
   groups,
   timezone,
@@ -84,6 +106,15 @@ export default function ToCheckList({
 
   async function confirm(card: PendingCard): Promise<boolean> {
     setError(card.id, null);
+    if (card.type === "email") {
+      const problem = await sendEmailCard(card.id);
+      if (problem) {
+        setError(card.id, problem);
+        return false;
+      }
+      announceCardsHandled([card.id]);
+      return true;
+    }
     const { error } = await createClient().rpc("confirm_item", {
       item_id: card.id,
     });
@@ -100,7 +131,9 @@ export default function ToCheckList({
     setNotice(null);
     if (await confirm(card)) {
       setNotice(
-        `✓ ${CARD_LABEL[card.type] ?? "Card"} confirmed: ${card.title}`,
+        card.type === "email"
+          ? `✓ Email sent to ${card.client_name ?? card.details.email?.to}`
+          : `✓ ${CARD_LABEL[card.type] ?? "Card"} confirmed: ${card.title}`,
       );
       const target = calendarTarget(card);
       if (target) {
@@ -118,10 +151,15 @@ export default function ToCheckList({
     setNotice(null);
     let done = 0;
     let repeats = 0;
+    let emailsLeft = 0;
     const targets: { id: string; create: boolean }[] = [];
     for (const card of [...group.cards].sort(
       (a, b) => a.position - b.position,
     )) {
+      if (card.type === "email") {
+        emailsLeft++; // an email only goes when you tap Send on it
+        continue;
+      }
       if (card.details.duplicate_of) {
         repeats++; // never confirm a possible repeat unless you decide to
         continue;
@@ -150,6 +188,11 @@ export default function ToCheckList({
     const parts: string[] = [];
     if (done)
       parts.push(`✓ Confirmed ${done} ${done === 1 ? "card" : "cards"}`);
+    if (emailsLeft) {
+      parts.push(
+        `${emailsLeft === 1 ? "1 email is" : `${emailsLeft} emails are`} waiting for you to send`,
+      );
+    }
     if (repeats) {
       parts.push(
         `skipped ${repeats} possible ${repeats === 1 ? "repeat" : "repeats"}`,
@@ -281,6 +324,10 @@ export default function ToCheckList({
               key={card.id}
               card={card}
               timezone={timezone}
+              waitingForChange={
+                !!card.details.goes_with_item_id &&
+                group.cards.some((c) => c.id === card.details.goes_with_item_id)
+              }
               busy={busy === card.id || busy === `group:${group.key}`}
               error={errors[card.id]}
               onConfirm={() => void onConfirm(card)}
@@ -302,6 +349,7 @@ export default function ToCheckList({
 function CardView({
   card,
   timezone,
+  waitingForChange,
   busy,
   error,
   onConfirm,
@@ -312,6 +360,7 @@ function CardView({
 }: {
   card: PendingCard;
   timezone: string;
+  waitingForChange: boolean;
   busy: boolean;
   error: string | undefined;
   onConfirm: () => void;
@@ -332,6 +381,18 @@ function CardView({
     .join(" · ");
   const options = card.client_id ? [] : (d.client_options ?? []);
 
+  if (editing && card.type === "email") {
+    return (
+      <EditEmail
+        card={card}
+        onCancel={() => setEditing(false)}
+        onSaved={() => {
+          setEditing(false);
+          onSaved();
+        }}
+      />
+    );
+  }
   if (editing) {
     return (
       <EditCard
@@ -351,9 +412,28 @@ function CardView({
       <span
         className={`text-xs font-bold uppercase tracking-wide ${CARD_TEXT_CLASS[card.type] ?? ""}`}
       >
-        {CARD_LABEL[card.type] ?? card.type}
+        {card.type === "email"
+          ? `Email to ${card.client_name ?? "client"}`
+          : (CARD_LABEL[card.type] ?? card.type)}
       </span>
       <h3 className="text-lg font-semibold leading-snug">{card.title}</h3>
+
+      {card.type === "email" && d.email && (
+        <div className="flex flex-col gap-2">
+          <p className="text-muted">
+            To:{" "}
+            <span className={d.email.to ? "font-mono text-sm" : "font-semibold text-variation"}>
+              {d.email.to ?? "no email address yet"}
+            </span>
+          </p>
+          <p className="whitespace-pre-wrap rounded-lg border border-line bg-bg p-3 text-base">
+            {d.email.body}
+          </p>
+          <p className="text-sm text-muted">
+            It goes out in your business name, and replies come to you.
+          </p>
+        </div>
+      )}
 
       {isChange && d.target && (
         <div className="flex flex-col gap-0.5">
@@ -417,6 +497,11 @@ function CardView({
       {d.address && <p className="text-muted">{d.address}</p>}
       {d.notes && <p className="text-muted">{d.notes}</p>}
       {missing && <p className="font-semibold text-variation">{missing}</p>}
+      {waitingForChange && (
+        <p className="font-semibold text-todo">
+          Confirm the change above first, then send this.
+        </p>
+      )}
 
       {d.duplicate_of && (
         <p
@@ -495,10 +580,10 @@ function CardView({
             <button
               type="button"
               onClick={onConfirm}
-              disabled={busy || !!missing}
+              disabled={busy || !!missing || waitingForChange}
               className={`${bigButton} flex-1 border border-line bg-surface`}
             >
-              Keep anyway
+              {card.type === "email" ? "Send anyway" : "Keep anyway"}
             </button>
           </>
         ) : (
@@ -506,10 +591,16 @@ function CardView({
             <button
               type="button"
               onClick={onConfirm}
-              disabled={busy || !!missing}
+              disabled={busy || !!missing || waitingForChange}
               className={`${bigButton} flex-1 bg-ink text-surface`}
             >
-              {busy ? "One sec…" : "Confirm"}
+              {busy
+                ? card.type === "email"
+                  ? "Sending…"
+                  : "One sec…"
+                : card.type === "email"
+                  ? "Send email"
+                  : "Confirm"}
             </button>
             <button
               type="button"
@@ -744,6 +835,122 @@ function EditCard({
         <button
           type="submit"
           disabled={busy || !dateOk}
+          className={`${bigButton} flex-1 bg-accent text-accent-ink`}
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className={`${bigButton} border border-line bg-surface`}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EditEmail({
+  card,
+  onCancel,
+  onSaved,
+}: {
+  card: PendingCard;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const d = card.details;
+  const [to, setTo] = useState(d.email?.to ?? "");
+  const [subject, setSubject] = useState(d.email?.subject ?? card.title);
+  const [body, setBody] = useState(d.email?.body ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (to.trim() && !isEmail(to)) {
+      setError("That email address doesn't look right.");
+      return;
+    }
+    if (!subject.trim() || !body.trim()) {
+      setError("The email needs a subject and a message.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { error } = await createClient()
+      .from("items")
+      .update({
+        title: subject.trim().slice(0, 200),
+        details: {
+          ...d,
+          send_error: null,
+          email: {
+            kind: d.email?.kind ?? "other",
+            to: to.trim() || null,
+            subject: subject.trim().slice(0, 200),
+            body: body.trim(),
+          },
+        },
+      })
+      .eq("id", card.id);
+    if (error) {
+      setError("Couldn't save that. Check your signal and try again.");
+      setBusy(false);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <form
+      onSubmit={save}
+      className="flex flex-col gap-3 rounded-xl border border-accent bg-surface p-4"
+    >
+      <span className={`text-xs font-bold uppercase tracking-wide ${CARD_TEXT_CLASS.email}`}>
+        Editing · Email to {card.client_name ?? "client"}
+      </span>
+      <label className="flex flex-col gap-1 font-semibold">
+        To
+        <input
+          type="email"
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="name@example.com"
+          autoComplete="off"
+          className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1 font-semibold">
+        Subject
+        <input
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          maxLength={200}
+          className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1 font-semibold">
+        Message
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={10}
+          maxLength={5000}
+          className="rounded-xl border border-line bg-bg px-3 py-2 text-base font-normal"
+        />
+      </label>
+      {error && (
+        <p role="alert" className="text-variation">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={busy}
           className={`${bigButton} flex-1 bg-accent text-accent-ink`}
         >
           {busy ? "Saving…" : "Save"}

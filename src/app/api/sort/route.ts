@@ -7,6 +7,8 @@ import {
   type ExistingItem,
 } from "@/lib/duplicates";
 import { resolveChange, type Booking } from "@/lib/bookings";
+import { composeBookingEmail, composeOtherEmail, isEmail } from "@/lib/client-email";
+import { loadSender } from "@/lib/email-sender";
 import { addDays, dateIn } from "@/lib/format";
 import { SORT_SYSTEM_PROMPT } from "@/lib/sort-prompt";
 import { SortResult, type SortedCard } from "@/lib/sort-schema";
@@ -82,7 +84,7 @@ export async function POST(request: NextRequest) {
   const [{ data: clients }, { data: jobs }] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, name, aliases, address")
+      .select("id, name, aliases, address, email")
       .order("name")
       .limit(300),
     supabase
@@ -96,7 +98,7 @@ export async function POST(request: NextRequest) {
   const todayIso = dateIn(business.timezone);
   const { data: bookingRows } = await supabase
     .from("items")
-    .select("id, title, due_date, start_time, end_time, details, clients(name)")
+    .select("id, title, due_date, start_time, end_time, details, client_id, clients(name)")
     .eq("type", "calendar")
     .eq("status", "confirmed")
     .gte("due_date", addDays(todayIso, -1))
@@ -104,7 +106,7 @@ export async function POST(request: NextRequest) {
     .order("due_date")
     .order("start_time")
     .limit(60);
-  const bookings: (Booking & { address: string | null })[] = (
+  const bookings: (Booking & { address: string | null; clientId: string | null })[] = (
     bookingRows ?? []
   ).map((b) => {
     const client = Array.isArray(b.clients) ? b.clients[0] : b.clients;
@@ -116,8 +118,11 @@ export async function POST(request: NextRequest) {
       end: b.end_time ? b.end_time.slice(0, 5) : null,
       client: client?.name ?? null,
       address: b.details?.address ?? null,
+      clientId: b.client_id ?? null,
     };
   });
+  const sender = await loadSender(supabase, user);
+  const clientEmails = new Map((clients ?? []).map((c) => [c.id, c.email as string | null]));
 
   // What's already in Yarn from the last 30 days, so a repeat can be spotted.
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -170,9 +175,9 @@ export async function POST(request: NextRequest) {
           role: "user",
           content:
             `TODAY: ${todayIn(business.timezone)} (timezone ${business.timezone})\n\n` +
-            `CLIENTS (JSON):\n${JSON.stringify(clients ?? [])}\n\n` +
+            `CLIENTS (JSON):\n${JSON.stringify((clients ?? []).map(({ id, name, aliases, address }) => ({ id, name, aliases, address })))}\n\n` +
             `OPEN JOBS (JSON):\n${JSON.stringify(jobs ?? [])}\n\n` +
-            `UPCOMING BOOKINGS (JSON):\n${JSON.stringify(bookings)}\n\n` +
+            `UPCOMING BOOKINGS (JSON):\n${JSON.stringify(bookings.map(({ clientId, ...b }) => { void clientId; return b; }))}\n\n` +
             `VOICE NOTE:\n${capture.transcript}`,
         },
       ],
@@ -203,14 +208,14 @@ export async function POST(request: NextRequest) {
 
   // Never trust ids, dates or times blindly: keep only what checks out.
   const names = new Map((clients ?? []).map((c) => [c.id, c.name]));
-  const rows = sorted.map((card, position) => {
-    const clientId =
-      card.client_id && clientIds.has(card.client_id) ? card.client_id : null;
-    const options = clientId
-      ? []
-      : card.client_options.filter((id) => clientIds.has(id));
-    if (card.type === "reschedule" || card.type === "cancel") {
-      const change = resolveChange(
+
+  // Work out each reschedule and cancel first: an email card may need to tell a client about one.
+  const resolved = new Map<number, ReturnType<typeof resolveChange>>();
+  sorted.forEach((card, position) => {
+    if (card.type !== "reschedule" && card.type !== "cancel") return;
+    resolved.set(
+      position,
+      resolveChange(
         {
           type: card.type,
           title: card.title,
@@ -221,7 +226,78 @@ export async function POST(request: NextRequest) {
           end_time: isTime(card.end_time) ? card.end_time : null,
         },
         bookings,
-      );
+      ),
+    );
+  });
+
+  const rows = sorted.map((card, position) => {
+    const clientId =
+      card.client_id && clientIds.has(card.client_id) ? card.client_id : null;
+    const options = clientId
+      ? []
+      : card.client_options.filter((id) => clientIds.has(id));
+    if (card.type === "email") {
+      const kind = card.email_kind ?? "other";
+      // The change card this email is about (the one named, or the first of the right kind).
+      const named = card.goes_with_card;
+      const changeAt =
+        kind === "other"
+          ? -1
+          : named !== null && resolved.has(named) && sorted[named].type === kind
+            ? named
+            : ([...resolved.keys()].find((i) => sorted[i].type === kind) ?? -1);
+      const change = changeAt >= 0 ? resolved.get(changeAt) : undefined;
+      const booking = change?.target ?? null;
+      const emailClientId = clientId ?? (booking ? bookings.find((b) => b.id === booking.id)?.clientId : null) ?? null;
+      const clientName = emailClientId ? (names.get(emailClientId) ?? null) : null;
+      const signOff = sender?.signOff ?? "";
+
+      let composed: { subject: string; body: string };
+      if (booking && change && kind !== "other") {
+        composed = composeBookingEmail({
+          kind,
+          clientName,
+          bookingTitle: booking.title,
+          old: { date: booking.date, start: booking.start },
+          next: kind === "reschedule" && change.due_date ? { date: change.due_date, start: change.start_time } : undefined,
+          note: card.email_note,
+          signOff,
+        });
+      } else {
+        composed = composeOtherEmail({
+          clientName,
+          subject: card.email_subject,
+          message: card.email_body ?? card.email_note ?? "",
+          businessName: sender?.businessName ?? "",
+          signOff,
+        });
+      }
+      const to = emailClientId ? (clientEmails.get(emailClientId) ?? null) : null;
+      return {
+        capture_id: captureId,
+        business_id: business.id,
+        type: "email",
+        title: composed.subject.slice(0, 200),
+        client_id: emailClientId,
+        job_id: null,
+        due_date: null,
+        start_time: null,
+        end_time: null,
+        details: {
+          email: { to: to && isEmail(to) ? to : null, subject: composed.subject, body: composed.body, kind: booking ? kind : "other" },
+          goes_with_card: change ? changeAt : null,
+          target_item_id: change?.targetId ?? null,
+          client_options: emailClientId
+            ? []
+            : (options.map((id) => ({ id, name: names.get(id) ?? "" }))),
+          duplicate_of: repeatedNote,
+        },
+        status: "pending",
+        position,
+      };
+    }
+    if (card.type === "reschedule" || card.type === "cancel") {
+      const change = resolved.get(position)!;
       const snapshot = (b: Booking) => ({
         id: b.id,
         title: b.title,
@@ -315,6 +391,24 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("sort: couldn't save cards", error.message);
       return fail("Sorted it, but couldn't save the cards. Try again.", 500);
+    }
+  }
+  // An email about a move or cancel needs to know which saved card that is.
+  const linked = rows.filter((r) => r.type === "email" && r.details.goes_with_card !== null);
+  if (linked.length) {
+    const { data: saved } = await supabase
+      .from("items")
+      .select("id, position, details")
+      .eq("capture_id", captureId);
+    for (const r of linked) {
+      const mine = saved?.find((x) => x.position === r.position);
+      const change = saved?.find((x) => x.position === r.details.goes_with_card);
+      if (mine && change) {
+        await supabase
+          .from("items")
+          .update({ details: { ...mine.details, goes_with_item_id: change.id } })
+          .eq("id", mine.id);
+      }
     }
   }
   await supabase

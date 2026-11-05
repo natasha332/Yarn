@@ -29,7 +29,10 @@ type Row = {
     notes?: string | null;
     calendar_sync?: string | null;
   } | null;
-  clients: { name: string } | { name: string }[] | null;
+  clients:
+    | { name: string; email: string | null }
+    | { name: string; email: string | null }[]
+    | null;
   jobs: { name: string } | { name: string }[] | null;
 };
 
@@ -81,7 +84,7 @@ async function TodayContent() {
     supabase
       .from("items")
       .select(
-        "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name), jobs(name)",
+        "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name, email), jobs(name)",
       )
       .eq("status", "confirmed")
       .order("created_at", { ascending: false })
@@ -193,6 +196,8 @@ async function TodayContent() {
                     start={r.start_time}
                     end={r.end_time}
                     timezone={business.timezone}
+                    clientName={one(r.clients)?.name ?? null}
+                    canEmail={!!one(r.clients)?.email}
                   />
                 </div>
               </li>
@@ -294,6 +299,8 @@ async function TodayContent() {
                     start={r.start_time}
                     end={r.end_time}
                     timezone={business.timezone}
+                    clientName={one(r.clients)?.name ?? null}
+                    canEmail={!!one(r.clients)?.email}
                   />
                 </div>
               </li>
