@@ -1,0 +1,24 @@
+import { dueDigests } from "../.tmp/lib/digest-schedule.ts";
+import assert from "node:assert/strict";
+let n = 0; const ok = (name: string, f: () => void) => { f(); n++; console.log("ok -", name); };
+const biz = { timezone: "Australia/Sydney", morning_enabled: true, morning_email_time: "07:00:00", wrapup_mode: "end_of_day", wrapup_time: "17:00:00", notify_channel: "email" };
+// Sydney is UTC+11 in November (daylight saving), UTC+10 in winter.
+const at = (iso: string) => new Date(iso);
+const kinds = (b: typeof biz, d: Date) => dueDigests(b, d).map(x => x.kind).join(",");
+ok("6:45am Sydney: nothing due yet", () => assert.equal(kinds(biz, at("2026-11-02T19:45:00Z")), ""));
+ok("7:00am Sydney: morning is due, for the right local date", () => { const d = dueDigests(biz, at("2026-11-02T20:00:00Z")); assert.equal(d.length, 1); assert.equal(d[0].kind, "morning"); assert.equal(d[0].localDate, "2026-11-03"); });
+ok("7:14am: still due (the 15-minute timer)", () => assert.equal(kinds(biz, at("2026-11-02T20:14:00Z")), "morning"));
+ok("8:59am: still due (catch-up window)", () => assert.equal(kinds(biz, at("2026-11-02T21:59:00Z")), "morning"));
+ok("9:00am: too late, not sent", () => assert.equal(kinds(biz, at("2026-11-02T22:00:00Z")), ""));
+ok("5:00pm: wrap-up due", () => assert.equal(kinds(biz, at("2026-11-03T06:00:00Z")), "wrapup"));
+ok("midday: nothing", () => assert.equal(kinds(biz, at("2026-11-03T01:00:00Z")), ""));
+ok("winter time (UTC+10): 7am is 21:00 UTC the day before", () => assert.equal(kinds(biz, at("2026-06-14T21:00:00Z")), "morning"));
+ok("winter: 20:00Z is 6am, not due", () => assert.equal(kinds(biz, at("2026-06-14T20:00:00Z")), ""));
+ok("other timezone: Perth 7am = 23:00Z (UTC+8)", () => assert.equal(kinds({ ...biz, timezone: "Australia/Perth" }, at("2026-11-02T23:00:00Z")), "morning"));
+ok("morning off", () => assert.equal(kinds({ ...biz, morning_enabled: false }, at("2026-11-02T20:00:00Z")), ""));
+ok("wrap-up off", () => assert.equal(kinds({ ...biz, wrapup_mode: "off" }, at("2026-11-03T06:00:00Z")), ""));
+ok("same time for both: both due", () => assert.equal(kinds({ ...biz, wrapup_time: "07:00:00" }, at("2026-11-02T20:00:00Z")), "morning,wrapup"));
+ok("push-only business gets no emails", () => assert.equal(kinds({ ...biz, notify_channel: "push" }, at("2026-11-02T20:00:00Z")), ""));
+ok("both channel still gets email", () => assert.equal(kinds({ ...biz, notify_channel: "both" }, at("2026-11-02T20:00:00Z")), "morning"));
+ok("late wrap-up (11:30pm) window stops at midnight", () => { const b = { ...biz, wrapup_time: "23:30:00" }; assert.equal(kinds(b, at("2026-11-03T12:45:00Z")), "wrapup"); assert.equal(kinds(b, at("2026-11-03T13:00:00Z")), ""); });
+console.log(n, "passed");

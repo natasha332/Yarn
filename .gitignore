@@ -42,3 +42,5 @@ next-env.d.ts
 
 # keep the template, it holds no secrets
 !.env.example
+/dev-tests/.tmp/
+/dev-tests/*.png

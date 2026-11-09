@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The test suite (pretend servers and Playwright scripts) is not part of the app.
+    "dev-tests/**",
+    "netlify/**",
   ]),
 ]);
 

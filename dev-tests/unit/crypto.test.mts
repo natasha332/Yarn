@@ -1,0 +1,15 @@
+import { encryptToken, decryptToken } from "../../src/lib/token-crypto.ts";
+import assert from "node:assert/strict";
+const key = "a-long-random-secret-from-a-password-manager-1234";
+let n = 0; const ok = (name: string, f: () => void) => { f(); n++; console.log("ok -", name); };
+const token = "1//0gAbCdEf-refresh-token_xyz";
+const enc = encryptToken(token, key);
+ok("round trip", () => assert.equal(decryptToken(enc, key), token));
+ok("scrambled (token not visible)", () => assert.ok(!enc.includes("refresh") && !enc.includes(token)));
+ok("different every time", () => assert.notEqual(enc, encryptToken(token, key)));
+ok("wrong key refused", () => assert.throws(() => decryptToken(enc, key + "x")));
+ok("tampering refused", () => { const p = enc.split("."); p[3] = Buffer.from("evil").toString("base64"); assert.throws(() => decryptToken(p.join("."), key)); });
+ok("short key refused", () => assert.throws(() => encryptToken(token, "short")));
+ok("missing key refused", () => assert.throws(() => encryptToken(token, undefined)));
+ok("garbage refused", () => assert.throws(() => decryptToken("nonsense", key)));
+console.log(n, "passed");
