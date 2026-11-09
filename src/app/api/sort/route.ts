@@ -237,9 +237,9 @@ export async function POST(request: NextRequest) {
       ? []
       : card.client_options.filter((id) => clientIds.has(id));
     if (card.type === "email") {
-      const kind = card.email_kind ?? "other";
+      const kind = card.email_kind === "reschedule" || card.email_kind === "cancel" ? card.email_kind : "other";
       // The change card this email is about (the one named, or the first of the right kind).
-      const named = card.goes_with_card;
+      const named = card.goes_with_card >= 0 ? card.goes_with_card : null;
       const changeAt =
         kind === "other"
           ? -1
@@ -260,14 +260,14 @@ export async function POST(request: NextRequest) {
           bookingTitle: booking.title,
           old: { date: booking.date, start: booking.start },
           next: kind === "reschedule" && change.due_date ? { date: change.due_date, start: change.start_time } : undefined,
-          note: card.email_note,
+          note: card.email_note.trim() || null,
           signOff,
         });
       } else {
         composed = composeOtherEmail({
           clientName,
-          subject: card.email_subject,
-          message: card.email_body ?? card.email_note ?? "",
+          subject: card.email_subject.trim() || null,
+          message: card.email_body.trim() || card.email_note.trim(),
           businessName: sender?.businessName ?? "",
           signOff,
         });
