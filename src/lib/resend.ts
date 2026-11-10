@@ -21,6 +21,7 @@ export async function sendEmail(mail: {
   text: string;
   fromName?: string; // the name people see, on the same sending address
   replyTo?: string | null; // where their replies go
+  bcc?: string[]; // hidden copies (for example "send me a copy")
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, reason: "notset", message: "Email isn't set up on the server yet." };
@@ -34,6 +35,7 @@ export async function sendEmail(mail: {
           ? `${mail.fromName.replace(/["<>\r\n]/g, "").trim()} <${senderAddress()}>`
           : process.env.EMAIL_FROM || DEFAULT_FROM,
         ...(mail.replyTo ? { reply_to: mail.replyTo } : {}),
+        ...(mail.bcc?.length ? { bcc: mail.bcc } : {}),
         to: [mail.to],
         subject: mail.subject,
         html: mail.html,

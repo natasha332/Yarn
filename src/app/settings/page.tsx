@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { requireBusiness } from "@/lib/business";
@@ -68,6 +69,7 @@ async function saveEmailIdentity(formData: FormData) {
       email_from_name: text("from_name", 80) || null,
       email_reply_to: replyTo || null,
       email_sign_off: text("sign_off", 500) || null,
+      email_copy_to_me: formData.get("copy_to_me") === "on",
     })
     .eq("id", business.id);
   redirect(`/settings?saved=${error ? "failed" : "ok"}`);
@@ -266,7 +268,7 @@ async function ClientEmailCard() {
   const [{ data: settings }, { data: auth }, { data: person }] = await Promise.all([
     supabase
       .from("businesses")
-      .select("email_from_name, email_reply_to, email_sign_off")
+      .select("email_from_name, email_reply_to, email_sign_off, email_copy_to_me")
       .eq("id", business.id)
       .maybeSingle(),
     supabase.auth.getUser(),
@@ -304,8 +306,23 @@ async function ClientEmailCard() {
             className="rounded-xl border border-line bg-bg px-3 py-2 text-base font-normal"
           />
         </label>
+        <label className="flex min-h-12 items-center gap-3 font-semibold">
+          <input
+            type="checkbox"
+            name="copy_to_me"
+            defaultChecked={settings?.email_copy_to_me ?? true}
+            className="h-6 w-6 shrink-0 accent-[var(--accent)]"
+          />
+          Send me a copy of every email Yarn sends
+        </label>
+        <p className="-mt-2 text-sm text-muted">
+          The copy goes to your reply-to address, so you can read what your client got. It arrives in your inbox, not your Sent folder.
+        </p>
         <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">Save</button>
       </form>
+      <Link href="/settings/sent" className="flex min-h-12 items-center font-semibold text-accent underline">
+        See the emails Yarn has sent →
+      </Link>
     </section>
   );
 }

@@ -69,6 +69,11 @@ export async function POST(request: NextRequest) {
   if (!claimed?.length) return reply("already", "That email has already been sent.", 409);
 
   const { html, text: plain } = renderClientEmail(text);
+  // "Send me a copy": a hidden copy to her own address (not when the client IS her own address).
+  const copy =
+    sender.copyToMe && sender.replyTo && isEmail(sender.replyTo) && sender.replyTo.toLowerCase() !== to.toLowerCase()
+      ? [sender.replyTo]
+      : undefined;
   const result = await sendEmail({
     to,
     subject,
@@ -76,6 +81,7 @@ export async function POST(request: NextRequest) {
     text: plain,
     fromName: sender.fromName,
     replyTo: sender.replyTo,
+    bcc: copy,
   });
 
   const log = {
@@ -84,6 +90,7 @@ export async function POST(request: NextRequest) {
     client_id: item.client_id,
     to_email: to,
     subject,
+    body: text,
   };
   if (!result.ok) {
     // Put it back so she can try again, and keep a note of what happened.

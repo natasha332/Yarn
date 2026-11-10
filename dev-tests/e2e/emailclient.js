@@ -223,7 +223,51 @@ const setIdentity = () => post('/__bizset', { email_from_name: 'Tabrez – Sunda
     await say1(p, 'EMAILROBYN email Robyn the quote is ready');
     await btn(card(p, 'Email to Robyn Clarke'), 'Edit').click(); await p.locator('textarea').fill('long message '.repeat(200));
     await btn(p.locator('form').filter({ hasText: 'Editing' }), 'Save').click(); await p.waitForSelector('text=long message'); await p.waitForFunction(() => !document.querySelector('a[href^="mailto:"]'), null, { timeout: 10000 }).catch(() => {});
-    ok('a message too long for a phone link has no mail-app link, but can still be sent', await card(p, 'Email to Robyn Clarke').locator('a:has-text("Open in my email app")').count() === 0 && await btn(card(p, 'Email to Robyn Clarke'), 'Send email').count() === 1); }
+    let longOk = false; for (let i = 0; i < 40 && !longOk; i++) { longOk = await card(p, 'Email to Robyn Clarke').locator('a:has-text("Open in my email app")').count() === 0 && await btn(card(p, 'Email to Robyn Clarke'), 'Send email').count() === 1; if (!longOk) await p.waitForTimeout(250); }
+    ok('a message too long for a phone link has no mail-app link, but can still be sent', longOk); }
+
+  console.log('12. A copy of every email, and the Sent emails list');
+  { await reset(); await setIdentity(); const { p } = await open(b);
+    await p.goto('http://localhost:3000/settings'); await p.waitForSelector('h2:has-text("Emails to clients")');
+    ok('"Send me a copy" is on by default', await p.locator('input[name=copy_to_me]').isChecked());
+    await p.goto('http://localhost:3000/'); await p.waitForSelector('button[aria-label="Start recording"]');
+    await say1(p, 'EMAILROBYN email Robyn the quote is ready'); await btn(card(p, 'Email to Robyn Clarke'), 'Send email').click();
+    let m = (await waitMails(1))[0];
+    ok('a hidden copy goes to her reply-to address', JSON.stringify(m.bcc) === JSON.stringify(['tabrez@sundaykitchens.com.au']) && m.to[0] === 'robyn@example.com');
+    ok('the sent record keeps the full text', (await get('/__sentlog'))[0].body.includes('Your quote is ready.')); }
+  { await reset(); await setIdentity(); const { p } = await open(b);
+    await p.goto('http://localhost:3000/settings'); await p.waitForSelector('input[name=copy_to_me]');
+    await p.locator('input[name=copy_to_me]').uncheck(); await p.locator('section', { hasText: 'Emails to clients' }).getByRole('button', { name: 'Save', exact: true }).click(); await toast(p, 'Saved.');
+    ok('turning it off is saved', (await get('/__biz')).settings.email_copy_to_me === false);
+    await p.goto('http://localhost:3000/'); await p.waitForSelector('button[aria-label="Start recording"]');
+    await say1(p, 'EMAILROBYN email Robyn the quote is ready'); await btn(card(p, 'Email to Robyn Clarke'), 'Send email').click();
+    const m = (await waitMails(1))[0];
+    ok('with it off, no copy is sent', m.bcc === undefined && m.to[0] === 'robyn@example.com'); }
+  { await reset(); await post('/__bizset', { email_from_name: 'Tabrez', email_reply_to: 'robyn@example.com', email_sign_off: 'Tabrez' }); const { p } = await open(b);
+    await say1(p, 'EMAILROBYN email Robyn the quote is ready'); await btn(card(p, 'Email to Robyn Clarke'), 'Send email').click();
+    const m = (await waitMails(1))[0];
+    ok('if the client IS her reply-to address she is not sent a duplicate', m.bcc === undefined); }
+  { await reset(); await setIdentity(); const { ctx, p } = await open(b);
+    await p.goto('http://localhost:3000/settings/sent'); await p.waitForSelector('h1:has-text("Sent emails")');
+    ok('empty list explains itself', await p.locator('text=Nothing sent yet').count() === 1);
+    await p.goto('http://localhost:3000/'); await p.waitForSelector('button[aria-label="Start recording"]');
+    await say1(p, 'EMAILROBYN email Robyn the quote is ready'); await btn(card(p, 'Email to Robyn Clarke'), 'Send email').click(); await waitMails(1);
+    await post('/__emailfail', { code: 500, message: 'Resend is having a moment' });
+    await say1(p, 'EMAILDAVE email Dave about the colour');
+    await p.locator('article', { hasText: 'Email to Dave Nguyen' }).getByRole('button', { name: 'Edit', exact: true }).click(); await p.locator('input[placeholder="name@example.com"]').fill('dave@example.com'); await btn(p.locator('form').filter({ hasText: 'Editing' }), 'Save').click(); await p.waitForSelector('text=dave@example.com');
+    await btn(card(p, 'Email to Dave Nguyen'), 'Send email').click(); await p.waitForSelector('text=Resend is having a moment');
+    await p.goto('http://localhost:3000/settings/sent'); await p.waitForSelector('text=Quote ready');
+    const t = await p.locator('main ul').first().innerText();
+    ok('lists what was sent, newest first, with who it went to', t.toLowerCase().includes('✓ sent') && t.includes('Quote ready') && t.includes('robyn@example.com') && t.indexOf('Quick question') < t.indexOf('Quote ready'));
+    ok('shows an email that failed, with why', t.toLowerCase().includes("didn't send") && t.includes('Resend is having a moment'));
+    await p.locator('summary', { hasText: 'Read the email' }).first().click();
+    ok('and the full text of the email', await p.locator('text=Your quote is ready.').count() >= 1);
+    const w = await p.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
+    ok('fits a small phone', w.s <= w.c);
+    const anon = await (await b.newContext()).request.get('http://localhost:3000/settings/sent', { maxRedirects: 0 });
+    ok('logged-out people are sent to log in', [307, 308].includes(anon.status()));
+    await p.goto('http://localhost:3000/settings'); await p.waitForSelector('text=See the emails Yarn has sent');
+    ok('Settings links to it', await p.locator('a[href="/settings/sent"]').count() === 1); }
 
   await b.close(); stopAll();
   console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED'); process.exit(fails ? 1 : 0);

@@ -230,7 +230,8 @@ http.createServer(async (req, res) => {
     state.emails.push({ auth: req.headers.authorization, ...JSON.parse(raw.toString()) });
     return json(200, { id: 'em_' + state.emails.length });
   }
-  if (p === '/rest/v1/sent_emails' && req.method === 'POST') { state.sentLog = (state.sentLog || []).concat([JSON.parse(raw.toString())]); res.writeHead(201); return res.end(); }
+  if (p === '/rest/v1/sent_emails' && req.method === 'POST') { state.sentLog = state.sentLog || []; state.sentLog.push({ id: 'se-' + (state.sentLog.length + 1), sent_at: new Date().toISOString(), ...JSON.parse(raw.toString()) }); res.writeHead(201); return res.end(); }
+  if (p === '/rest/v1/sent_emails' && req.method === 'GET') return json(200, [...(state.sentLog || [])].reverse().map(r => ({ ...r, clients: null })));
   if (p === '/__sentlog') return json(200, state.sentLog || []);
   if (p === '/__sentreset') { state.sentLog = []; state.clientPatches = []; clients[1].email = null; return json(200, {}); }
   if (p === '/__emails') return json(200, state.emails || []);
