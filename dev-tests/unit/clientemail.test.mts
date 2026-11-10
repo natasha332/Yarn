@@ -1,4 +1,4 @@
-import { composeBookingEmail, composeOtherEmail, renderClientEmail, isEmail, firstName, defaultSignOff } from "../.tmp/lib/client-email.ts";
+import { composeBookingEmail, composeOtherEmail, renderClientEmail, isEmail, firstName, defaultSignOff, buildMailto } from "../.tmp/lib/client-email.ts";
 import assert from "node:assert/strict";
 let n = 0; const ok = (name: string, f: () => void) => { f(); n++; console.log("ok -", name); };
 const sign = "Tabrez\nSunday Kitchens";
@@ -34,4 +34,18 @@ ok("sent email is escaped, keeps line breaks, has the Yarn footer", () => {
 });
 ok("email address check", () => { for (const g of ["a@b.co", "robyn.c+x@example.com.au"]) assert.ok(isEmail(g), g); for (const b of ["", null, "nope", "a@b", "a b@c.com", "a@b.c", "x@y.com, z@w.com", "<a@b.com>", "a@b.com;c@d.com"]) assert.ok(!isEmail(b as string), String(b)); });
 ok("names and default sign-off", () => { assert.equal(firstName("Robyn Clarke"), "Robyn"); assert.equal(firstName(null), ""); assert.equal(defaultSignOff("Tabrez", "Sunday Kitchens"), "Tabrez\nSunday Kitchens"); assert.equal(defaultSignOff(null, "Sunday Kitchens"), "Sunday Kitchens"); });
+ok("mail-app link: address, subject and message are encoded; line breaks survive", () => {
+  const u = buildMailto({ to: "robyn@example.com", subject: "Quote & price?", body: "Hi Robyn,\n\nYour quote is ready.\n\nThanks,\nTabrez" })!;
+  assert.ok(u.startsWith("mailto:robyn@example.com?subject=Quote%20%26%20price%3F&body="));
+  const body = decodeURIComponent(u.split("&body=")[1]);
+  assert.equal(body, "Hi Robyn,\r\n\r\nYour quote is ready.\r\n\r\nThanks,\r\nTabrez");
+});
+ok("mail-app link: no usable address -> opens with an empty To so she can pick one", () => {
+  assert.ok(buildMailto({ to: null, subject: "x", body: "y" })!.startsWith("mailto:?subject=x&body=y"));
+  assert.ok(buildMailto({ to: "not an email", subject: "x", body: "y" })!.startsWith("mailto:?subject="));
+});
+ok("mail-app link: a message too long for a phone link gets no link (Send is used instead)", () => {
+  assert.equal(buildMailto({ to: "a@b.co", subject: "x", body: "word ".repeat(600) }), null);
+  assert.ok(buildMailto({ to: "a@b.co", subject: "x", body: "word ".repeat(100) }) !== null);
+});
 console.log(n, "passed");

@@ -62,6 +62,7 @@ export type CardDetails = {
   goes_with_card?: number | null;
   goes_with_item_id?: string | null;
   send_error?: string | null;
+  handed_off_at?: string | null; // opened in her own email app; she taps Done once she has sent it
 };
 
 // A card waiting on the home page, as the screen needs it.

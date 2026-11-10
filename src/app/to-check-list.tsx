@@ -14,7 +14,7 @@ import {
   type ToCheckGroup,
 } from "@/lib/cards";
 import { formatClock, formatDay, formatWhen } from "@/lib/format";
-import { isEmail } from "@/lib/client-email";
+import { buildMailto, isEmail } from "@/lib/client-email";
 import { syncBooking, syncToast } from "@/lib/google-sync";
 import { showToast } from "@/lib/toast";
 import { JOB_STATUSES, statusLabel } from "@/lib/jobs";
@@ -266,6 +266,33 @@ export default function ToCheckList({
     setBusy(null);
   }
 
+  // "Open in my email app": remember that she did, so the card can ask whether she sent it.
+  async function onHandOff(card: PendingCard) {
+    const { error } = await createClient()
+      .from("items")
+      .update({ details: { ...card.details, handed_off_at: new Date().toISOString() } })
+      .eq("id", card.id);
+    if (!error) router.refresh();
+  }
+
+  async function onMarkSent(card: PendingCard) {
+    setBusy(card.id);
+    setNotice(null);
+    const { error } = await createClient()
+      .from("items")
+      .update({ status: "confirmed" })
+      .eq("id", card.id)
+      .eq("status", "pending");
+    if (error) {
+      setError(card.id, "Couldn't save that. Check your signal and try again.");
+    } else {
+      announceCardsHandled([card.id]);
+      setNotice(`✓ Marked as sent: ${card.title}`);
+      router.refresh();
+    }
+    setBusy(null);
+  }
+
   async function onChooseClient(card: PendingCard, clientId: string) {
     setBusy(card.id);
     const { error } = await createClient()
@@ -334,6 +361,8 @@ export default function ToCheckList({
               onDiscard={() => void onDiscard(card)}
               onChooseClient={(id) => void onChooseClient(card, id)}
               onChooseBooking={(b) => void onChooseBooking(card, b)}
+              onHandOff={() => void onHandOff(card)}
+              onMarkSent={() => void onMarkSent(card)}
               onSaved={() => {
                 setNotice(null);
                 router.refresh();
@@ -356,6 +385,8 @@ function CardView({
   onDiscard,
   onChooseClient,
   onChooseBooking,
+  onHandOff,
+  onMarkSent,
   onSaved,
 }: {
   card: PendingCard;
@@ -367,9 +398,12 @@ function CardView({
   onDiscard: () => void;
   onChooseClient: (clientId: string) => void;
   onChooseBooking: (booking: BookingSnapshot) => void;
+  onHandOff: () => void;
+  onMarkSent: () => void;
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const mailto = card.type === "email" && card.details.email ? buildMailto(card.details.email) : null;
   const isChange = card.type === "reschedule" || card.type === "cancel";
   const d = card.details;
   const missing = needs(card);
@@ -430,8 +464,14 @@ function CardView({
             {d.email.body}
           </p>
           <p className="text-sm text-muted">
-            It goes out in your business name, and replies come to you.
+            Send emails from Yarn (in your business name), or open it in your
+            own email app.
           </p>
+          {d.handed_off_at && (
+            <p className="font-semibold text-todo">
+              Opened in your email app. Send it there, then tap Done.
+            </p>
+          )}
         </div>
       )}
 
@@ -620,6 +660,25 @@ function CardView({
             className={`${bigButton} border border-line bg-surface ${d.duplicate_of ? "flex-1" : ""}`}
           >
             Edit
+          </button>
+        )}
+        {card.type === "email" && mailto && !waitingForChange && (
+          <a
+            href={mailto}
+            onClick={onHandOff}
+            className={`${bigButton} flex w-full items-center justify-center border border-line bg-surface`}
+          >
+            Open in my email app
+          </a>
+        )}
+        {card.type === "email" && d.handed_off_at && (
+          <button
+            type="button"
+            onClick={onMarkSent}
+            disabled={busy}
+            className={`${bigButton} w-full border border-line bg-surface`}
+          >
+            Done, I sent it
           </button>
         )}
       </div>

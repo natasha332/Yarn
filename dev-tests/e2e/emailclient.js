@@ -195,6 +195,36 @@ const setIdentity = () => post('/__bizset', { email_from_name: 'Tabrez – Sunda
     w = await p.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
     ok('and so does its edit form', w.s <= w.c); }
 
+  console.log('11. "Open in my email app": reply from her own mail app, any provider');
+  { await reset(); await setIdentity(); const { p } = await open(b); await seedBooking();
+    await say1(p, 'EMAILROBYN reply to Robyn about the quote');
+    const em = card(p, 'Email to Robyn Clarke');
+    const link = em.locator('a:has-text("Open in my email app")');
+    ok('the email card offers it', await link.count() === 1);
+    const href = await link.getAttribute('href');
+    ok('it opens a new email to Robyn with the subject', href.startsWith('mailto:robyn@example.com?subject=Quote%20ready&body='));
+    ok('with the message exactly as written, line breaks included', decodeURIComponent(href.split('&body=')[1]) === "Hi Robyn,\r\n\r\nYour quote is ready. I'll drop it round on Friday.\r\n\r\nThanks,\r\nTabrez\r\nSunday Kitchens\r\n0400 000 000");
+    await p.evaluate(() => { document.querySelector('a[href^="mailto:"]').addEventListener('click', e => e.preventDefault()); });
+    await link.click();
+    await p.waitForSelector('text=Opened in your email app');
+    ok('the card remembers it, and nothing was sent by Yarn', (await get('/__state')).items.find(i => i.type === 'email').details.handed_off_at && (await mails()).length === 0);
+    ok('it asks whether she sent it, and Send with Yarn is still there', await btn(em, 'Done, I sent it').count() === 1 && await btn(em, 'Send email').count() === 1);
+    await btn(em, 'Done, I sent it').click();
+    await p.waitForFunction(() => document.querySelectorAll('article').length === 0, null, { timeout: 15000 });
+    ok('Done clears the card without Yarn sending anything', (await get('/__state')).items.find(i => i.type === 'email').status === 'confirmed' && (await mails()).length === 0); }
+  { await reset(); await setIdentity(); const { p } = await open(b);
+    await say1(p, 'EMAILDAVE email Dave about the colour');
+    const href = await card(p, 'Email to Dave Nguyen').locator('a:has-text("Open in my email app")').getAttribute('href');
+    ok('a client with no address still works: her mail app opens with To empty to pick someone', href.startsWith('mailto:?subject=Quick%20question&body=')); }
+  { await reset(); await setIdentity(); const { p } = await open(b); await seedBooking();
+    await say1(p, 'MOVETELL move the site visit and tell Robyn');
+    ok('an email about a move has no mail-app link until the move is confirmed', await card(p, 'Email to Robyn Clarke').locator('a:has-text("Open in my email app")').count() === 0); }
+  { await reset(); await setIdentity(); const { p } = await open(b);
+    await say1(p, 'EMAILROBYN email Robyn the quote is ready');
+    await btn(card(p, 'Email to Robyn Clarke'), 'Edit').click(); await p.locator('textarea').fill('long message '.repeat(200));
+    await btn(p.locator('form').filter({ hasText: 'Editing' }), 'Save').click(); await p.waitForSelector('text=long message'); await p.waitForFunction(() => !document.querySelector('a[href^="mailto:"]'), null, { timeout: 10000 }).catch(() => {});
+    ok('a message too long for a phone link has no mail-app link, but can still be sent', await card(p, 'Email to Robyn Clarke').locator('a:has-text("Open in my email app")').count() === 0 && await btn(card(p, 'Email to Robyn Clarke'), 'Send email').count() === 1); }
+
   await b.close(); stopAll();
   console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED'); process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); stopAll(); process.exit(1); });

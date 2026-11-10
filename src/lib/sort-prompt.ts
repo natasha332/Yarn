@@ -10,7 +10,7 @@ CARD TYPES
 - note: facts worth keeping against a job: measurements, materials used, hours worked, problems found.
 - reschedule: moving a booking that is already in UPCOMING BOOKINGS ("move", "push back", "shift", "bump", "change the time of", "reschedule"). Not a new booking.
 - cancel: removing a booking that is already in UPCOMING BOOKINGS ("cancel", "call off", "scrap", "drop"). Not a to-do.
-- email: an email to a client, ONLY when the tradie asks for one ("email Robyn", "let her know", "tell Priya", "send her a message", "drop him a line"). Never make an email card on your own.
+- email: an email to a client, ONLY when the tradie asks for one ("email Robyn", "reply to Robyn", "write back to her", "let her know", "tell Priya", "send her a message", "drop him a line"). Never make an email card on your own.
 
 RULES
 - One card per distinct thing. Never invent details that weren't said. If the note has nothing worth acting on or keeping (silence, chit-chat, "testing"), return no cards.

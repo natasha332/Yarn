@@ -88,3 +88,13 @@ export function renderClientEmail(body: string) {
 
 export const isEmail = (s: string | null | undefined) =>
   !!s && s.length <= 254 && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]{2,}$/.test(s.trim());
+
+// A link that opens the tradie's own email app with the message already written (any provider).
+// Phones cut off very long links, so a message that won't fit gets no link and must use Send.
+export function buildMailto(mail: { to: string | null; subject: string; body: string }): string | null {
+  const url =
+    `mailto:${mail.to && isEmail(mail.to) ? encodeURIComponent(mail.to.trim()).replace(/%40/g, "@") : ""}` +
+    `?subject=${encodeURIComponent(mail.subject)}` +
+    `&body=${encodeURIComponent(mail.body.replace(/\r?\n/g, "\r\n"))}`;
+  return url.length <= 1900 ? url : null;
+}
