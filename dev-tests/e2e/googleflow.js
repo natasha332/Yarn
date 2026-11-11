@@ -125,7 +125,7 @@ const notice = p => p.locator('[role=status]').first().innerText();
 
   console.log('7. Google down: Yarn still saves, and "Try again" works');
   await reset(); await connect();
-  await post('/__seed', { items: [card({ title: 'Quote visit', due_date: '2026-11-09', start_time: '10:00:00' })] });
+  await post('/__seed', { items: [card({ title: 'Quote visit', due_date: plus(3), start_time: '10:00:00' })] });
   await post('/__gcalfail', { code: 500 });
   await p.goto('http://localhost:3000/'); await p.waitForSelector('text=Quote visit');
   await p.getByRole('button', { name: 'Confirm', exact: true }).click();

@@ -24,11 +24,11 @@ NEXT_PUBLIC_SUPABASE_URL=http://localhost:4000 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_
 node dev-tests/e2e/cardstest.js                     # each file starts its own `next start` and prints PASS / FAIL
 ```
 Run `killtest.py` and restart the pretend server between files. Files written for newer features
-(`googleflow`, `emailtest`, `calendarmail`, `digestrun`, `briefingtest`, `googletest`, `emailclient`, `gmailflow`) run with
+(`googleflow`, `emailtest`, `calendarmail`, `digestrun`, `briefingtest`, `googletest`, `emailclient`, `gmailflow`, `pushflow`) run with
 `node --experimental-strip-types` because they load Yarn's own TypeScript helpers.
 
 What each covers: `cardstest`, `fitcards`, `layouttest` (cards and phone layout), `todaytest`, `reschedtest`,
 `voiceresched` (move and cancel), `dupstest` (repeat detection), `sorttest`, `errtest`, `offlinetest`, `pwatest`,
 `deltest`, `notestest`, `clearnotes` (recording, offline, notes), `googletest` (connect Google), `googleflow`
-(events, reminders, moves), `emailtest` and `calendarmail` (briefing and wrap-up emails), `gmailflow` (connect Gmail, find an email, write and draft the reply), `digestrun`
+(events, reminders, moves), `emailtest` and `calendarmail` (briefing and wrap-up emails), `gmailflow` (connect Gmail, find an email, write and draft the reply), `pushflow` (notifications: turning them on, real Web Push delivery checked and decrypted, the timer, the service worker; it also starts `fake/push-service.js`, a pretend phone push service), `digestrun`
 (the 15-minute timer and no-duplicates), `briefingtest` (Daily emails settings), `emailclient` (emailing clients).

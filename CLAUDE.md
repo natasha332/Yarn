@@ -31,7 +31,7 @@ Natasha is building this herself with Claude Code and is not a professional deve
 - Email: Resend. Briefing and wrap-up come from `EMAIL_FROM` (needs a verified domain); client emails use the same address with the business's name and Reply-To
 - Timer: Netlify scheduled function `netlify/functions/digest-cron.mts` calls `/api/cron/digest` every 15 minutes with `CRON_SECRET`; each email is claimed in `digest_log` first so nobody gets a duplicate. The run uses `SUPABASE_SECRET_KEY` (very powerful, Netlify only)
 - Gmail (pilot): optional separate connection in `gmail_connections`, same Google client and callback as Calendar (the `gmail.` start of the state tells them apart), key encrypted the same way. Flow: sorter makes an `email` card of kind `reply` -> the card calls `/api/gmail/prepare` (search, read one thread, `src/lib/reply-writer.ts`) -> `/api/gmail/choose` if several match -> `/api/gmail/draft` saves the draft. Each step is its own request so none runs past Netlify's time limit
-- Push: standard web push from the PWA (not built yet)
+- Push: standard Web Push (VAPID) with the `web-push` package. Phones register on Settings (`push_subscriptions`, one row per device); the service worker (`public/sw.js`) shows the notification and opens the right screen. The timer sends the briefing/wrap-up to every phone of a business and uses email as the backup whenever a push doesn't get through (`notify_channel`: email, push, both). Needs `VAPID_PUBLIC_KEY` (not secret) and `VAPID_PRIVATE_KEY` (secret); `VAPID_SUBJECT` is optional. On iPhone it only works once Yarn is added to the Home Screen
 - Styling: Tailwind CSS. Big tap targets; it's used with dirty hands and in the ute
 - Default timezone: Australia/Sydney. Dates shown as "Tue 3 Nov", times as "9:00am"
 
@@ -44,7 +44,8 @@ Natasha is building this herself with Claude Code and is not a professional deve
 - **captures**: id, business_id, user_id, audio_url, transcript, created_at, status (recorded, transcribed, sorted, failed)
 - **items**: id, capture_id, business_id, type (calendar, todo, followup, note, job, invoice, quote, variation, reschedule, cancel, email), title, client_id, job_id, due_date, start_time, end_time, details (JSON), status (pending, confirmed, discarded, done), external_id (the Google event id), position, done_at (set automatically when ticked off). A cancelled booking is kept as `discarded` with `details.cancelled_at`. `details.calendar_sync` ('needs_update' / 'needs_delete') marks a booking whose Google event still has to follow a move or cancel. An `email` card holds `details.email` {to, subject, body, kind}; it can only be sent through `/api/email/send` (`confirm_item` refuses emails)
 - **google_connections**: business_id, google_email, refresh_token_enc, connected_at
-- **digest_log**: business_id, kind (morning, wrapup), local_date, status, attempts, to_email, error. One row per business per kind per day: the claim that stops duplicate emails
+- **push_subscriptions**: business_id, user_id, endpoint (unique), p256dh, auth, device: one row per phone that has notifications on
+- **digest_log**: business_id, kind (morning, wrapup), local_date, status, attempts, to_email, channels, error. One row per business per kind per day: the claim that stops duplicate emails
 - **sent_emails**: business_id, item_id, client_id, to_email, subject, body, status (sent, failed), resend_id, error: a record of every client email
 - **gmail_connections**: business_id, google_email, refresh_token_enc, connected_at (Gmail pilot)
 
@@ -54,7 +55,7 @@ Natasha is building this herself with Claude Code and is not a professional deve
 2. Capture screen: record (works offline, uploads later), transcribe, AI sorts into items, confirmation cards (Confirm, Edit, Discard)
 3. Google Calendar: confirmed calendar items become events with a 30 minute reminder; moving or cancelling a booking (buttons or voice) updates or removes the event
 4. Today screen: schedule (Yarn bookings), to-dos and follow-ups, job notes, reschedule and cancel
-5. 7am Today briefing and day wrap-up by email, listing Yarn bookings plus other timed events on the main Google calendar; push is not built yet
+5. 7am Today briefing and day wrap-up by email and/or push notification (the tradie chooses), listing Yarn bookings plus other timed events on the main Google calendar
 6. Emailing clients: "let her know" notices for a move or cancel, and free-form emails by voice. Each is an Email card the tradie reads and sends
 
 Not in the MVP: crew logins, accounting integrations, quoting, SMS, reading a tradie's inbox.
@@ -76,11 +77,13 @@ Not in the MVP: crew logins, accounting integrations, quoting, SMS, reading a tr
 
 Done since: "Open in my email app" on Email cards, a hidden copy of every client email plus a Sent emails list, and the Gmail reply pilot.
 
-Still to do: push notifications; an "Emails waiting for a reply" section in the briefing (needs Gmail); for other customers, Google's verification of the app (the Google project is Internal to one Workspace for now) and a decision on the Gmail security assessment.
+Also done: push notifications.
+
+Still to do: an "Emails waiting for a reply" section in the briefing (needs Gmail); for other customers, Google's verification of the app (the Google project is Internal to one Workspace for now) and a decision on the Gmail security assessment.
 
 ## Where things are
 
-- Environment variables (all secret ones live only in `.env.local` and Netlify): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_TOKEN_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET`. See `.env.example`
+- Environment variables (all secret ones live only in `.env.local` and Netlify): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_TOKEN_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`. See `.env.example`
 - Tests: `dev-tests/` (see its README). They run against pretend Supabase, OpenAI, Anthropic, Google and Resend servers, plus a throwaway Postgres for every migration. Run the relevant ones before pushing, and add one for anything new
 
 A clickable prototype of the Capture, Today and Emails screens exists as a reference for the look and flow.

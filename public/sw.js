@@ -51,6 +51,52 @@ self.addEventListener("message", (event) => {
   );
 });
 
+// A notification from Yarn (the morning briefing or the day wrap-up).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  // Only ever open a page inside Yarn.
+  const url = typeof data.url === "string" && data.url.startsWith("/") && !data.url.startsWith("//") ? data.url : "/";
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Yarn", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: data.tag || "yarn",
+      data: { url },
+    }),
+  );
+});
+
+// Tapping it opens Yarn at the right screen (or brings an already open Yarn forward).
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    (async () => {
+      const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of open) {
+        try {
+          await client.navigate(url);
+        } catch {
+          /* it may not be navigable: just bring it forward */
+        }
+        try {
+          await client.focus();
+        } catch {
+          /* some browsers won't let us: the navigation above is the important part */
+        }
+        return;
+      }
+      return self.clients.openWindow(url);
+    })(),
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;

@@ -35,7 +35,6 @@ const minutesOf = (t: string) => {
 };
 
 export function dueDigests(b: BusinessSchedule, now: Date): DueDigest[] {
-  if (b.notify_channel === "push") return []; // email only for now
   const nowMin = localMinutes(b.timezone, now);
   const localDate = dateIn(b.timezone, now);
   const due = (time: string) => {

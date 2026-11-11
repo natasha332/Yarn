@@ -44,7 +44,7 @@ http.createServer(async (req, res) => {
   if (p === '/__biz') return json(200, { settings: state.bizSettings || {}, patches: state.bizPatches || [] });
   if (p === '/__bizreset') { state.bizSettings = {}; state.bizPatches = []; state.bizFail = false; return json(200, {}); }
   if (p === '/__bizfail') { state.bizFail = true; return json(200, {}); }
-  if (p === '/rest/v1/businesses') { const row = { morning_enabled: true, morning_email_time: '07:00:00', wrapup_mode: 'end_of_day', wrapup_time: '17:00:00', ...BIZ, ...(state.bizSettings || {}) }; return json(200, wantsObject ? row : [row]); }
+  if (p === '/rest/v1/businesses') { const row = { morning_enabled: true, morning_email_time: '07:00:00', wrapup_mode: 'end_of_day', wrapup_time: '17:00:00', notify_channel: 'email', ...BIZ, ...(state.bizSettings || {}) }; return json(200, wantsObject ? row : [row]); }
   if (p === '/rest/v1/clients' && req.method === 'PATCH') { const id = (url.searchParams.get('id') || '').replace('eq.', ''); const c = clients.find(x => x.id === id); const patch = JSON.parse(raw.toString()); state.clientPatches = (state.clientPatches || []).concat([{ id, ...patch }]); if (c) Object.assign(c, patch); res.writeHead(204); return res.end(); }
   if (p === '/__clientpatches') return json(200, state.clientPatches || []);
   if (p === '/rest/v1/clients' && url.searchParams.get('id')) { const c = clients.find(x => x.id === url.searchParams.get('id').replace('eq.', '')); return c ? json(200, wantsObject ? c : [c]) : wantsObject ? json(406, { code: 'PGRST116', message: 'no rows' }) : json(200, []); }
@@ -293,6 +293,22 @@ http.createServer(async (req, res) => {
   if (p === '/__gmail') return json(200, { conn: state.gmailConn || null, saves: state.gmailSaves || 0, calls: state.gmailCalls || [], queries: state.gmailQueries || [], drafts: state.gmailDrafts || [], writers: state.writerCalls || [] });
   if (p === '/__gmailreset') { state.gmailConn = null; state.gmailSaves = 0; state.gmailCalls = []; state.gmailQueries = []; state.gmailDrafts = []; state.gmailThreads = {}; state.gmailFail = 0; state.writerCalls = []; state.writerFail = false; return json(200, {}); }
   if (p === '/__gmailseed') { const j = JSON.parse(raw.toString() || '{}'); if (j.conn) state.gmailConn = j.conn; if (j.thread) { state.gmailThreads = state.gmailThreads || {}; state.gmailThreads[j.thread.id] = j.thread; } if (j.fail !== undefined) state.gmailFail = j.fail; if (j.writerFail !== undefined) state.writerFail = j.writerFail; return json(200, {}); }
+
+  if (p === '/rest/v1/push_subscriptions') {
+    state.pushSubs = state.pushSubs || [];
+    const eq = k => { const v = url.searchParams.get(k); return v && v.startsWith('eq.') ? v.slice(3) : null; };
+    const inList = () => { const v = url.searchParams.get('id'); return v && v.startsWith('in.(') ? v.slice(4, -1).split(',') : null; };
+    if (req.method === 'POST') {
+      const row = JSON.parse(raw.toString());
+      if (state.pushSubs.some(r => r.endpoint === row.endpoint)) return json(409, { code: '23505', message: 'duplicate' });
+      state.pushSubs.push({ id: 'ps-' + (state.pushSubs.length + 1) + '-' + Date.now(), created_at: new Date().toISOString(), ...row }); res.writeHead(201); return res.end();
+    }
+    if (req.method === 'DELETE') { const before = state.pushSubs.length; state.pushSubs = state.pushSubs.filter(r => !((eq('endpoint') && r.endpoint === eq('endpoint')) || (eq('id') && r.id === eq('id')) || (inList() && inList().includes(r.id)))); res.writeHead(204); return res.end(); }
+    if (req.method === 'GET') { let rows = state.pushSubs; if (eq('business_id')) rows = rows.filter(r => r.business_id === eq('business_id')); if (eq('endpoint')) rows = rows.filter(r => r.endpoint === eq('endpoint')); return rows.length || !wantsObject ? json(200, wantsObject ? rows[0] : rows) : json(406, { code: 'PGRST116', message: 'no rows' }); }
+  }
+  if (p === '/__pushsubs') return json(200, state.pushSubs || []);
+  if (p === '/__pushseed') { state.pushSubs = (state.pushSubs || []).concat([{ id: 'ps-seed-' + (state.pushSubs || []).length, business_id: 'b0000000-0000-0000-0000-00000000000b', user_id: 'aaaaaaaa-0000-0000-0000-000000000001', device: 'Test', ...JSON.parse(raw.toString()) }]); return json(200, {}); }
+  if (p === '/__pushsubsreset') { state.pushSubs = []; return json(200, {}); }
   if (p === '/rest/v1/google_connections') {
     if (req.method === 'POST') { state.google = JSON.parse(raw.toString()); state.googleSaves = (state.googleSaves || 0) + 1; res.writeHead(state.googleSaveFail ? 500 : 201); return res.end(); }
     if (req.method === 'DELETE') { state.google = null; res.writeHead(204); return res.end(); }

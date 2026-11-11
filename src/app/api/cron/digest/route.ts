@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDigests } from "@/lib/digest-run";
+import { pushKeys, sendPush } from "@/lib/push";
 import { sendEmail } from "@/lib/resend";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -25,6 +26,21 @@ async function handle(request: NextRequest) {
       now: new Date(),
       siteUrl: process.env.SITE_URL ?? request.nextUrl.origin,
       send: sendEmail,
+      push: pushKeys()
+        ? {
+            devices: async (businessId) => {
+              const { data } = await admin
+                .from("push_subscriptions")
+                .select("id, endpoint, p256dh, auth")
+                .eq("business_id", businessId);
+              return data ?? [];
+            },
+            send: sendPush,
+            forget: async (id) => {
+              await admin.from("push_subscriptions").delete().eq("id", id);
+            },
+          }
+        : undefined,
     });
     return NextResponse.json(summary);
   } catch (e) {

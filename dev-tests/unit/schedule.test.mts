@@ -18,7 +18,7 @@ ok("other timezone: Perth 7am = 23:00Z (UTC+8)", () => assert.equal(kinds({ ...b
 ok("morning off", () => assert.equal(kinds({ ...biz, morning_enabled: false }, at("2026-11-02T20:00:00Z")), ""));
 ok("wrap-up off", () => assert.equal(kinds({ ...biz, wrapup_mode: "off" }, at("2026-11-03T06:00:00Z")), ""));
 ok("same time for both: both due", () => assert.equal(kinds({ ...biz, wrapup_time: "07:00:00" }, at("2026-11-02T20:00:00Z")), "morning,wrapup"));
-ok("push-only business gets no emails", () => assert.equal(kinds({ ...biz, notify_channel: "push" }, at("2026-11-02T20:00:00Z")), ""));
+ok("push-only business is due too (the run decides how to deliver it)", () => assert.equal(kinds({ ...biz, notify_channel: "push" }, at("2026-11-02T20:00:00Z")), "morning"));
 ok("both channel still gets email", () => assert.equal(kinds({ ...biz, notify_channel: "both" }, at("2026-11-02T20:00:00Z")), "morning"));
 ok("late wrap-up (11:30pm) window stops at midnight", () => { const b = { ...biz, wrapup_time: "23:30:00" }; assert.equal(kinds(b, at("2026-11-03T12:45:00Z")), "wrapup"); assert.equal(kinds(b, at("2026-11-03T13:00:00Z")), ""); });
 console.log(n, "passed");
