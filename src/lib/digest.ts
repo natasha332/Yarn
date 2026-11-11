@@ -16,6 +16,7 @@ export type DigestItem = {
   who: string; // "Priya · Kitchen reno"
   address: string | null;
   source?: "yarn" | "calendar"; // "calendar" = it's on her Google calendar, but Yarn didn't make it
+  eventId?: string; // the Google event id, for items that come from her Google calendar
 };
 
 export type Digest = {
@@ -55,24 +56,30 @@ const toItem = (r: Row): DigestItem => ({
 });
 
 const byWhen = (a: DigestItem, b: DigestItem) =>
-  (a.date ?? "").localeCompare(b.date ?? "") || (a.start ?? "").localeCompare(b.start ?? "");
+  (a.date ?? "").localeCompare(b.date ?? "") ||
+  (a.start ?? "").localeCompare(b.start ?? "");
 
 const SELECT =
   "id, type, title, due_date, start_time, end_time, external_id, details, clients(name), jobs(name)";
 
 const hhmmIn = (timeZone: string, moment: Date) => {
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(moment);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(moment);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
   return `${get("hour")}:${get("minute")}`;
 };
 
-// Other things on her main Google calendar for today and tomorrow, as list items.
-// Never throws: if Google is unreachable the email simply goes out without them.
-async function calendarItems(
+// Other things on her main Google calendar on the given days (timed, not cancelled, not declined, not "free"),
+// as list items. Includes events Yarn made itself: callers drop those by `eventId`.
+// Never throws: if Google is unreachable the screen or email simply goes without them.
+export async function otherCalendarEvents(
   supabase: SupabaseClient,
   business: { id: string; timezone: string },
   days: string[],
-  yarnEventIds: Set<string>,
 ): Promise<DigestItem[]> {
   try {
     const config = googleConfig();
@@ -83,18 +90,25 @@ async function calendarItems(
       .eq("business_id", business.id)
       .maybeSingle();
     if (!connection) return [];
-    const { accessToken } = await refreshAccessToken(config, decryptToken(connection.refresh_token_enc));
+    const { accessToken } = await refreshAccessToken(
+      config,
+      decryptToken(connection.refresh_token_enc),
+    );
     if (!accessToken) return [];
 
     // Wide enough to cover those two local days in any timezone; trimmed to the exact days below.
     const first = days[0].split("-").map(Number);
     const last = days[days.length - 1].split("-").map(Number);
-    const timeMin = new Date(Date.UTC(first[0], first[1] - 1, first[2]) - 14 * 3600e3);
-    const timeMax = new Date(Date.UTC(last[0], last[1] - 1, last[2] + 1) + 12 * 3600e3);
+    const timeMin = new Date(
+      Date.UTC(first[0], first[1] - 1, first[2]) - 14 * 3600e3,
+    );
+    const timeMax = new Date(
+      Date.UTC(last[0], last[1] - 1, last[2] + 1) + 12 * 3600e3,
+    );
 
     const items: DigestItem[] = [];
     for (const e of await listEvents(accessToken, timeMin, timeMax)) {
-      if (!worthListing(e, yarnEventIds)) continue;
+      if (!worthListing(e, new Set())) continue;
       const start = new Date(e.start!.dateTime!);
       const date = dateIn(business.timezone, start);
       if (!days.includes(date)) continue;
@@ -103,15 +117,21 @@ async function calendarItems(
         title: e.summary?.trim() || "(No title)",
         date,
         start: hhmmIn(business.timezone, start),
-        end: e.end?.dateTime ? hhmmIn(business.timezone, new Date(e.end.dateTime)) : null,
+        end: e.end?.dateTime
+          ? hhmmIn(business.timezone, new Date(e.end.dateTime))
+          : null,
         who: "",
         address: e.location ?? null,
         source: "calendar",
+        eventId: e.id,
       });
     }
     return items;
   } catch (e) {
-    console.error("Google Calendar events for the email:", e instanceof Error ? e.message : e);
+    console.error(
+      "Google Calendar events:",
+      e instanceof Error ? e.message : e,
+    );
     return [];
   }
 }
@@ -125,7 +145,12 @@ export async function loadDigest(
   const tomorrow = addDays(today, 1);
 
   const [open, done, waiting] = await Promise.all([
-    supabase.from("items").select(SELECT).eq("business_id", business.id).eq("status", "confirmed").limit(1000),
+    supabase
+      .from("items")
+      .select(SELECT)
+      .eq("business_id", business.id)
+      .eq("status", "confirmed")
+      .limit(1000),
     supabase
       .from("items")
       .select(`${SELECT}, done_at`)
@@ -144,23 +169,40 @@ export async function loadDigest(
   const rows = (open.data ?? []) as unknown as Row[];
   const calendar = rows.filter((r) => r.type === "calendar" && r.due_date);
   const doneRows = ((done.data ?? []) as unknown as Row[]).filter(
-    (r) => r.done_at && dateIn(business.timezone, new Date(r.done_at)) === today,
+    (r) =>
+      r.done_at && dateIn(business.timezone, new Date(r.done_at)) === today,
   );
 
   // Her other Google Calendar events join the same list, in time order.
-  const yarnEventIds = new Set(rows.map((r) => r.external_id).filter((x): x is string => !!x));
-  const others = await calendarItems(supabase, business, [today, tomorrow], yarnEventIds);
+  const yarnEventIds = new Set(
+    rows.map((r) => r.external_id).filter((x): x is string => !!x),
+  );
+  const others = (
+    await otherCalendarEvents(supabase, business, [today, tomorrow])
+  ).filter((o) => !yarnEventIds.has(o.eventId ?? ""));
 
   return {
     today,
-    schedule: [...calendar.filter((r) => r.due_date === today).map(toItem), ...others.filter((o) => o.date === today)].sort(byWhen),
-    tomorrow: [...calendar.filter((r) => r.due_date === tomorrow).map(toItem), ...others.filter((o) => o.date === tomorrow)].sort(byWhen),
+    schedule: [
+      ...calendar.filter((r) => r.due_date === today).map(toItem),
+      ...others.filter((o) => o.date === today),
+    ].sort(byWhen),
+    tomorrow: [
+      ...calendar.filter((r) => r.due_date === tomorrow).map(toItem),
+      ...others.filter((o) => o.date === tomorrow),
+    ].sort(byWhen),
     // Same rule as the Today screen: overdue first, then due today, then the ones with no date.
     todos: rows
-      .filter((r) => (r.type === "todo" || r.type === "followup") && (!r.due_date || r.due_date <= today))
+      .filter(
+        (r) =>
+          (r.type === "todo" || r.type === "followup") &&
+          (!r.due_date || r.due_date <= today),
+      )
       .map(toItem)
       .sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999")),
-    doneToday: doneRows.filter((r) => r.type === "todo" || r.type === "followup").map(toItem),
+    doneToday: doneRows
+      .filter((r) => r.type === "todo" || r.type === "followup")
+      .map(toItem),
     waiting: waiting.count ?? 0,
   };
 }

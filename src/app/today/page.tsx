@@ -10,6 +10,7 @@ import {
   formatLongDay,
   todayIn,
 } from "@/lib/format";
+import { otherCalendarEvents, type DigestItem } from "@/lib/digest";
 import { createClient } from "@/lib/supabase/server";
 import BookingActions from "./booking-actions";
 import GoogleStatus from "./google-status";
@@ -74,29 +75,74 @@ function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
+// An event from her other Google Calendar entries: shown, but moved or cancelled in Google, not here.
+function GoogleRow({ item, showDay }: { item: DigestItem; showDay?: boolean }) {
+  return (
+    <li
+      className={`grid ${showDay ? "grid-cols-[6.5rem_1fr]" : "grid-cols-[4.5rem_1fr]"} gap-3 border-t border-line p-4 first:border-t-0`}
+    >
+      <span className="font-mono text-sm text-muted">
+        {showDay && item.date ? (
+          <>
+            {formatDay(item.date)}
+            <br />
+          </>
+        ) : null}
+        {item.start ? formatClock(item.start) : "All day"}
+      </span>
+      <div className="flex flex-col gap-0.5">
+        <span className="flex flex-wrap items-center gap-2">
+          <span
+            className={`${showDay ? "" : "text-lg "}font-semibold leading-snug`}
+          >
+            {item.title}
+          </span>
+          <span className="rounded-full bg-sunk px-2 py-0.5 text-xs font-bold text-muted">
+            Calendar
+          </span>
+        </span>
+        {item.address && <span className="text-muted">{item.address}</span>}
+        {!showDay && item.start && item.end && (
+          <span className="font-mono text-xs text-muted">
+            until {formatClock(item.end)}
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
 async function TodayContent() {
   const business = await requireBusiness();
   const today = todayIn(business.timezone);
   const soon = addDays(today, 7);
   const supabase = await createClient();
 
-  const [{ data }, { count: waiting }, { data: google }] = await Promise.all([
-    supabase
-      .from("items")
-      .select(
-        "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name, email), jobs(name)",
-      )
-      .eq("status", "confirmed")
-      .order("created_at", { ascending: false })
-      .limit(500),
-    supabase
-      .from("items")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending"),
-    supabase.from("google_connections").select("business_id").maybeSingle(),
-  ]);
+  const days = Array.from({ length: 8 }, (_, i) => addDays(today, i));
+  const [{ data }, { count: waiting }, { data: google }, googleEvents] =
+    await Promise.all([
+      supabase
+        .from("items")
+        .select(
+          "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name, email), jobs(name)",
+        )
+        .eq("status", "confirmed")
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("items")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending"),
+      supabase.from("google_connections").select("business_id").maybeSingle(),
+      // Her other Google Calendar events (nothing, if Google isn't connected or can't be reached).
+      otherCalendarEvents(supabase, business, days),
+    ]);
   const connected = !!google;
   const rows = (data ?? []) as Row[];
+  const yarnEventIds = new Set(
+    rows.map((r) => r.external_id).filter((x): x is string => !!x),
+  );
+  const others = googleEvents.filter((o) => !yarnEventIds.has(o.eventId ?? ""));
 
   const schedule = rows
     .filter((r) => r.type === "calendar" && r.due_date === today)
@@ -110,6 +156,36 @@ async function TodayContent() {
         r.due_date <= soon,
     )
     .sort(byTime);
+  // Yarn bookings and her other calendar events share one list, in time order.
+  type Entry =
+    | { kind: "yarn"; row: Row; date: string; start: string }
+    | { kind: "google"; item: DigestItem; date: string; start: string };
+  const entries = (day: (d: string) => boolean, yarn: Row[]): Entry[] =>
+    [
+      ...yarn.map(
+        (row): Entry => ({
+          kind: "yarn",
+          row,
+          date: row.due_date!,
+          start: row.start_time?.slice(0, 5) ?? "",
+        }),
+      ),
+      ...others
+        .filter((o) => o.date && day(o.date))
+        .map(
+          (item): Entry => ({
+            kind: "google",
+            item,
+            date: item.date!,
+            start: item.start ?? "",
+          }),
+        ),
+    ].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
+    );
+  const scheduleEntries = entries((d) => d === today, schedule);
+  const comingEntries = entries((d) => d > today && d <= soon, coming);
+
   // Overdue first, then due today, then the ones with no date.
   const todos = rows
     .filter(
@@ -156,52 +232,58 @@ async function TodayContent() {
         </Link>
       )}
 
-      <Section title="Schedule" count={schedule.length}>
-        {schedule.length === 0 ? (
+      <Section title="Schedule" count={scheduleEntries.length}>
+        {scheduleEntries.length === 0 ? (
           <Empty>Nothing booked for today.</Empty>
         ) : (
           <ul className="overflow-hidden rounded-xl border border-line bg-surface">
-            {schedule.map((r) => (
-              <li
-                key={r.id}
-                className="grid grid-cols-[4.5rem_1fr] gap-3 border-t border-line p-4 first:border-t-0"
-              >
-                <span className="font-mono text-sm text-muted">
-                  {r.start_time
-                    ? formatClock(r.start_time.slice(0, 5))
-                    : "All day"}
-                </span>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-lg font-semibold leading-snug">
-                    {r.title}
-                  </span>
-                  {who(r) && <span className="text-muted">{who(r)}</span>}
-                  {r.details?.address && (
-                    <span className="text-muted">{r.details.address}</span>
-                  )}
-                  {r.end_time && r.start_time && (
-                    <span className="font-mono text-xs text-muted">
-                      until {formatClock(r.end_time.slice(0, 5))}
+            {scheduleEntries.map((entry) =>
+              entry.kind === "google" ? (
+                <GoogleRow key={entry.item.id} item={entry.item} />
+              ) : (
+                ((r) => (
+                  <li
+                    key={r.id}
+                    className="grid grid-cols-[4.5rem_1fr] gap-3 border-t border-line p-4 first:border-t-0"
+                  >
+                    <span className="font-mono text-sm text-muted">
+                      {r.start_time
+                        ? formatClock(r.start_time.slice(0, 5))
+                        : "All day"}
                     </span>
-                  )}
-                </div>
-                <div className="col-span-2 flex flex-col">
-                  {connected && (
-                    <GoogleStatus id={r.id} state={googleState(r)} />
-                  )}
-                  <BookingActions
-                    id={r.id}
-                    title={r.title}
-                    date={r.due_date!}
-                    start={r.start_time}
-                    end={r.end_time}
-                    timezone={business.timezone}
-                    clientName={one(r.clients)?.name ?? null}
-                    canEmail={!!one(r.clients)?.email}
-                  />
-                </div>
-              </li>
-            ))}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-lg font-semibold leading-snug">
+                        {r.title}
+                      </span>
+                      {who(r) && <span className="text-muted">{who(r)}</span>}
+                      {r.details?.address && (
+                        <span className="text-muted">{r.details.address}</span>
+                      )}
+                      {r.end_time && r.start_time && (
+                        <span className="font-mono text-xs text-muted">
+                          until {formatClock(r.end_time.slice(0, 5))}
+                        </span>
+                      )}
+                    </div>
+                    <div className="col-span-2 flex flex-col">
+                      {connected && (
+                        <GoogleStatus id={r.id} state={googleState(r)} />
+                      )}
+                      <BookingActions
+                        id={r.id}
+                        title={r.title}
+                        date={r.due_date!}
+                        start={r.start_time}
+                        end={r.end_time}
+                        timezone={business.timezone}
+                        clientName={one(r.clients)?.name ?? null}
+                        canEmail={!!one(r.clients)?.email}
+                      />
+                    </div>
+                  </li>
+                ))(entry.row)
+              ),
+            )}
           </ul>
         )}
       </Section>
@@ -269,42 +351,50 @@ async function TodayContent() {
         )}
       </Section>
 
-      {coming.length > 0 && (
-        <Section title="Coming up" count={coming.length}>
+      {comingEntries.length > 0 && (
+        <Section title="Coming up" count={comingEntries.length}>
           <ul className="overflow-hidden rounded-xl border border-line bg-surface">
-            {coming.map((r) => (
-              <li
-                key={r.id}
-                className="grid grid-cols-[6.5rem_1fr] gap-3 border-t border-line p-4 first:border-t-0"
-              >
-                <span className="font-mono text-sm text-muted">
-                  {formatDay(r.due_date!)}
-                  <br />
-                  {r.start_time
-                    ? formatClock(r.start_time.slice(0, 5))
-                    : "All day"}
-                </span>
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-semibold leading-snug">{r.title}</span>
-                  {who(r) && <span className="text-muted">{who(r)}</span>}
-                </div>
-                <div className="col-span-2 flex flex-col">
-                  {connected && (
-                    <GoogleStatus id={r.id} state={googleState(r)} />
-                  )}
-                  <BookingActions
-                    id={r.id}
-                    title={r.title}
-                    date={r.due_date!}
-                    start={r.start_time}
-                    end={r.end_time}
-                    timezone={business.timezone}
-                    clientName={one(r.clients)?.name ?? null}
-                    canEmail={!!one(r.clients)?.email}
-                  />
-                </div>
-              </li>
-            ))}
+            {comingEntries.map((entry) =>
+              entry.kind === "google" ? (
+                <GoogleRow key={entry.item.id} item={entry.item} showDay />
+              ) : (
+                ((r) => (
+                  <li
+                    key={r.id}
+                    className="grid grid-cols-[6.5rem_1fr] gap-3 border-t border-line p-4 first:border-t-0"
+                  >
+                    <span className="font-mono text-sm text-muted">
+                      {formatDay(r.due_date!)}
+                      <br />
+                      {r.start_time
+                        ? formatClock(r.start_time.slice(0, 5))
+                        : "All day"}
+                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-semibold leading-snug">
+                        {r.title}
+                      </span>
+                      {who(r) && <span className="text-muted">{who(r)}</span>}
+                    </div>
+                    <div className="col-span-2 flex flex-col">
+                      {connected && (
+                        <GoogleStatus id={r.id} state={googleState(r)} />
+                      )}
+                      <BookingActions
+                        id={r.id}
+                        title={r.title}
+                        date={r.due_date!}
+                        start={r.start_time}
+                        end={r.end_time}
+                        timezone={business.timezone}
+                        clientName={one(r.clients)?.name ?? null}
+                        canEmail={!!one(r.clients)?.email}
+                      />
+                    </div>
+                  </li>
+                ))(entry.row)
+              ),
+            )}
           </ul>
         </Section>
       )}

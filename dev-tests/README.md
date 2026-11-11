@@ -30,5 +30,5 @@ Run `killtest.py` and restart the pretend server between files. Files written fo
 What each covers: `cardstest`, `fitcards`, `layouttest` (cards and phone layout), `todaytest`, `reschedtest`,
 `voiceresched` (move and cancel), `dupstest` (repeat detection), `sorttest`, `errtest`, `offlinetest`, `pwatest`,
 `deltest`, `notestest`, `clearnotes` (recording, offline, notes), `googletest` (connect Google), `googleflow`
-(events, reminders, moves), `emailtest` and `calendarmail` (briefing and wrap-up emails), `gmailflow` (connect Gmail, find an email, write and draft the reply), `pushflow` (notifications: turning them on, real Web Push delivery checked and decrypted, the timer, the service worker; it also starts `fake/push-service.js`, a pretend phone push service), `digestrun`
+(events, reminders, moves), `emailtest` and `calendarmail` (briefing and wrap-up emails), `todaygoogle` (other Google Calendar events on the Today screen), `gmailflow` (connect Gmail, find an email, write and draft the reply), `pushflow` (notifications: turning them on, real Web Push delivery checked and decrypted, the timer, the service worker; it also starts `fake/push-service.js`, a pretend phone push service), `digestrun`
 (the 15-minute timer and no-duplicates), `briefingtest` (Daily emails settings), `emailclient` (emailing clients).
