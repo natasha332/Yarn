@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // "Turn off notifications on this phone".
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

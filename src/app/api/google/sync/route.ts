@@ -4,6 +4,7 @@ import { googleConfig, refreshAccessToken } from "@/lib/google";
 import { buildEvent, buildTimes, createEvent, deleteEvent, eventIdFor, updateEvent } from "@/lib/google-calendar";
 import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/token-crypto";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // Makes Google Calendar match one Yarn booking. The browser only sends the booking's id.
 // create: true  -> a booking that isn't in Google yet gets added (confirming a card, or "Add").
@@ -14,6 +15,7 @@ const nameOf = (v: One) => (Array.isArray(v) ? v[0]?.name : v?.name) ?? null;
 const reply = (status: string, message?: string) => NextResponse.json({ status, message });
 
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

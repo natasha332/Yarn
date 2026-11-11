@@ -4,10 +4,12 @@ import { loadDigest } from "@/lib/digest";
 import { renderDigest, type DigestKind } from "@/lib/digest-email";
 import { sendEmail } from "@/lib/resend";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // "Send me a test" on the Settings page: sends the real briefing or wrap-up, as it looks right now,
 // to the same address the daily emails will go to. Nothing is logged, so it never blocks a real one.
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

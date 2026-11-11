@@ -3,6 +3,7 @@ import { composeBookingEmail } from "@/lib/client-email";
 import { getMyBusiness } from "@/lib/business";
 import { loadSender } from "@/lib/email-sender";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // After she moves or cancels a booking with the buttons on Today, this writes the "let the client
 // know" email as a card in To check. It only writes the card: nothing is sent until she taps Send.
@@ -17,6 +18,7 @@ type One<T> = T | T[] | null;
 const one = <T,>(v: One<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
 
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

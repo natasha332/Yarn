@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const webpush = require('/home/user/Yarn/node_modules/web-push');
 const VAPID = webpush.generateVAPIDKeys();
 const SECRET = 'cron-secret-from-the-password-manager-123456';
-const base = { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0', NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:4000', NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test', RESEND_API_KEY: 're_test_key', RESEND_API_URL: 'http://localhost:4000/resend', SITE_URL: 'https://yarnnatasha.netlify.app', SUPABASE_SECRET_KEY: 'sb_secret_test', CRON_SECRET: SECRET, GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_TOKEN_KEY: 'a-long-random-secret-from-a-password-manager-1234' };
+const base = { ...process.env, PUSH_TEST_HOSTS: 'localhost', NODE_TLS_REJECT_UNAUTHORIZED: '0', NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:4000', NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test', RESEND_API_KEY: 're_test_key', RESEND_API_URL: 'http://localhost:4000/resend', SITE_URL: 'https://yarnnatasha.netlify.app', SUPABASE_SECRET_KEY: 'sb_secret_test', CRON_SECRET: SECRET, GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_TOKEN_KEY: 'a-long-random-secret-from-a-password-manager-1234' };
 const start = (extra, port) => spawn('/home/user/Yarn/node_modules/.bin/next', ['start', '-p', String(port)], { cwd: '/home/user/Yarn', env: { ...base, ...extra }, detached: true, stdio: 'ignore' });
 const pushSvc = spawn('node', ['/home/user/Yarn/dev-tests/fake/push-service.js'], { detached: true, stdio: 'ignore', env: process.env });
 const procs = [pushSvc, start({ VAPID_PUBLIC_KEY: VAPID.publicKey, VAPID_PRIVATE_KEY: VAPID.privateKey, VAPID_SUBJECT: 'mailto:hello@example.com' }, 3000), start({}, 3001)];

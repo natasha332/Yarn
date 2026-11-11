@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PROMPT_INTRO, removePromptEcho } from "@/lib/transcript";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // Turns a saved voice note into text.
 // The browser only sends the capture id. The audio is fetched here on the server,
@@ -11,6 +12,7 @@ function fail(error: string, status: number) {
 }
 
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return fail("Transcription isn't set up yet.", 503);
 
@@ -21,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (!user) return fail("Please log in again.", 401);
 
   const body = await request.json().catch(() => null);
-  const captureId = typeof body?.captureId === "string" ? body.captureId : null;
+  const captureId = typeof body?.captureId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(body.captureId) ? body.captureId : null;
   if (!captureId) return fail("Missing capture.", 400);
 
   // Row-level security means this only finds captures in the person's own business.

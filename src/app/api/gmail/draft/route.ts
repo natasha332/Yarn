@@ -3,6 +3,7 @@ import { isEmail } from "@/lib/client-email";
 import { createDraft, gmailAccess } from "@/lib/gmail";
 import type { GmailState } from "@/lib/gmail-reply";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // "Save to Gmail drafts": puts the reply in the tradie's Gmail as a DRAFT, in the same conversation.
 // Yarn has no permission to send from Gmail, so the tradie presses Send in Gmail themselves.
@@ -12,6 +13,7 @@ const reply = (status: string, message?: string, code = 200) =>
   NextResponse.json({ status, message }, { status: code });
 
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

@@ -13,6 +13,7 @@ import { addDays, dateIn } from "@/lib/format";
 import { SORT_SYSTEM_PROMPT } from "@/lib/sort-prompt";
 import { SortResult, type SortedCard } from "@/lib/sort-schema";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // Sorts a written-down voice note into cards (calendar, to-do, new job...) for the tradie to check.
 // Nothing here is final: cards are saved as "pending" until the tradie confirms them.
@@ -42,6 +43,7 @@ function todayIn(timeZone: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return fail("Sorting isn't set up yet.", 503);
 
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
   if (!user) return fail("Please log in again.", 401);
 
   const body = await request.json().catch(() => null);
-  const captureId = typeof body?.captureId === "string" ? body.captureId : null;
+  const captureId = typeof body?.captureId === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(body.captureId) ? body.captureId : null;
   if (!captureId) return fail("Missing capture.", 400);
 
   // Row-level security means all of these only ever find the person's own business.

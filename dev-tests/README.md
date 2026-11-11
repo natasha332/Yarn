@@ -23,12 +23,12 @@ python3 dev-tests/killtest.py                       # stop leftovers from an ear
 NEXT_PUBLIC_SUPABASE_URL=http://localhost:4000 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_test npx next build
 node dev-tests/e2e/cardstest.js                     # each file starts its own `next start` and prints PASS / FAIL
 ```
-Run `killtest.py` and restart the pretend server between files. Files written for newer features
+Run `killtest.py` and restart the pretend server between files. The older ones (`errtest`, `deltest`, `notestest`, `offlinetest`) don't start anything themselves: start the pretend server and `next start -p 3000` (with the pretend OpenAI and Anthropic addresses) first, and read their printed output. `pwatest` starts its own servers, so run it alone. Files written for newer features
 (`googleflow`, `emailtest`, `calendarmail`, `digestrun`, `briefingtest`, `googletest`, `emailclient`, `gmailflow`, `pushflow`) run with
 `node --experimental-strip-types` because they load Yarn's own TypeScript helpers.
 
 What each covers: `cardstest`, `fitcards`, `layouttest` (cards and phone layout), `todaytest`, `reschedtest`,
 `voiceresched` (move and cancel), `dupstest` (repeat detection), `sorttest`, `errtest`, `offlinetest`, `pwatest`,
 `deltest`, `notestest`, `clearnotes` (recording, offline, notes), `googletest` (connect Google), `googleflow`
-(events, reminders, moves), `emailtest` and `calendarmail` (briefing and wrap-up emails), `todaygoogle` (other Google Calendar events on the Today screen), `gmailflow` (connect Gmail, find an email, write and draft the reply), `pushflow` (notifications: turning them on, real Web Push delivery checked and decrypted, the timer, the service worker; it also starts `fake/push-service.js`, a pretend phone push service), `digestrun`
+(events, reminders, moves), `emailtest` and `calendarmail` (briefing and wrap-up emails), `todaygoogle` (other Google Calendar events on the Today screen), `securitytest` (other-website requests refused, push address allowlist, odd ids, the daily email limit, browser protection headers), `gmailflow` (connect Gmail, find an email, write and draft the reply), `pushflow` (notifications: turning them on, real Web Push delivery checked and decrypted, the timer, the service worker; it also starts `fake/push-service.js`, a pretend phone push service), `digestrun`
 (the 15-minute timer and no-duplicates), `briefingtest` (Daily emails settings), `emailclient` (emailing clients).

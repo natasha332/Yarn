@@ -38,4 +38,10 @@ ok("a plain ASCII subject stays readable, and a first email has no thread header
   const raw = Buffer.from(buildRaw({ to: "a@b.co", subject: "Hello", body: "x" }), "base64url").toString("utf8");
   assert.ok(raw.includes("Subject: Hello\r\n") && !raw.includes("In-Reply-To"));
 });
+ok("a line break in the subject or ids cannot add a header to the draft", () => {
+  const raw = Buffer.from(buildRaw({ to: "a@b.co", subject: "Quote\r\nBcc: evil@x.com", body: "x", inReplyTo: "<m1@x>\r\nCc: evil@x.com", references: "<m0@x>\nX-Evil: 1" }), "base64url").toString("utf8");
+  const head = raw.split("\r\n\r\n")[0];
+  assert.ok(!/^bcc:/im.test(head) && !/^cc:/im.test(head) && !/^x-evil:/im.test(head));
+  assert.equal(head.split("\r\n").filter((l) => /^(To|Subject|In-Reply-To|References):/.test(l)).length, 4);
+});
 console.log(n, "passed");

@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prepareReply } from "@/lib/gmail-reply";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // She picked which email ("Which email?"). Only one of the options saved on the card is accepted.
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

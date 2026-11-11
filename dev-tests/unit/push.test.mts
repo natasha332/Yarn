@@ -23,6 +23,10 @@ ok("a long title is cut so it fits a lock screen", () => assert.ok(pushSummary("
 const ecdh = createECDH("prime256v1"); ecdh.generateKeys();
 const good = { endpoint: "https://fcm.googleapis.com/fcm/send/abc", keys: { p256dh: ecdh.getPublicKey().toString("base64url"), auth: randomBytes(16).toString("base64url") } };
 ok("a real browser subscription is accepted", () => assert.deepEqual(parseSubscription(good), { endpoint: good.endpoint, p256dh: good.keys.p256dh, auth: good.keys.auth }));
+ok("only real push services are accepted (nobody can point Yarn's server at another address)", () => {
+  for (const host of ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com", "wns2-par02p.notify.windows.com"]) assert.ok(parseSubscription({ ...good, endpoint: `https://${host}/x/abc` }), host);
+  for (const host of ["169.254.169.254", "localhost", "internal.example.com", "evil.com", "fcm.googleapis.com.evil.com", "notfcm.googleapis.com", "push.apple.com.evil.com", "127.0.0.1"]) assert.equal(parseSubscription({ ...good, endpoint: `https://${host}/latest/meta-data` }), null, host);
+});
 ok("anything odd is refused", () => {
   for (const bad of [null, {}, { ...good, endpoint: "http://insecure.example.com/x" }, { ...good, endpoint: "not a url" }, { ...good, endpoint: "https://x.com/" + "a".repeat(1100) },
     { ...good, keys: { ...good.keys, p256dh: "short" } }, { ...good, keys: { p256dh: good.keys.p256dh } }, { ...good, keys: { ...good.keys, auth: "a b" } }, { endpoint: 5, keys: good.keys }])

@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prepareReply } from "@/lib/gmail-reply";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // Called by the card itself the moment a "reply to ..." card appears: finds the email and writes the reply.
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

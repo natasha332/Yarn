@@ -3,15 +3,19 @@ import { isEmail, renderClientEmail } from "@/lib/client-email";
 import { loadSender } from "@/lib/email-sender";
 import { sendEmail } from "@/lib/resend";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // Sends an "email" card to the client, from the tradie's business name, with replies going to them.
 // Only the card's id comes from the browser: the address, subject and message are read back from
 // the saved card, and the card is claimed first so a double tap can never send it twice.
 
+const DAILY_EMAIL_LIMIT = 100;
+
 const reply = (status: string, message?: string, code = 200) =>
   NextResponse.json({ status, message }, { status: code });
 
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },
@@ -57,6 +61,16 @@ export async function POST(request: NextRequest) {
     if (change?.status === "discarded") {
       return reply("blocked", "You discarded the change this email is about. Discard the email too.", 409);
     }
+  }
+
+  // A daily limit, so a mistake or a stolen login can't turn Yarn into a spam cannon.
+  const { count: sentToday } = await supabase
+    .from("sent_emails")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "sent")
+    .gte("sent_at", new Date(Date.now() - 24 * 3600e3).toISOString());
+  if ((sentToday ?? 0) >= DAILY_EMAIL_LIMIT) {
+    return reply("limit", `That's today's limit of ${DAILY_EMAIL_LIMIT} emails from Yarn. Try again tomorrow.`, 429);
   }
 
   // Claim it. If someone else (a double tap) already did, stop here.

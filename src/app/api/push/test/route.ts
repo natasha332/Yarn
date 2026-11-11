@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { pushKeys, sendPush } from "@/lib/push";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // "Send me a test notification": sends one to THIS phone only.
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },

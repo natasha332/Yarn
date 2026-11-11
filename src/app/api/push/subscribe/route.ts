@@ -2,9 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getMyBusiness } from "@/lib/business";
 import { parseSubscription } from "@/lib/push";
 import { createClient } from "@/lib/supabase/server";
+import { blocked, crossSite } from "@/lib/same-origin";
 
 // "Turn on notifications on this phone": saves the phone's push address for the logged-in person.
 export async function POST(request: NextRequest) {
+  if (crossSite(request)) return blocked();
   const supabase = await createClient();
   const {
     data: { user },
