@@ -35,7 +35,13 @@ type Send = (mail: {
 
 export async function runDigests(
   admin: SupabaseClient,
-  opts: { now: Date; siteUrl: string; send: Send; push?: PushDelivery },
+  opts: {
+    now: Date;
+    siteUrl: string;
+    send: Send;
+    push?: PushDelivery;
+    alert?: (subject: string, text: string) => Promise<void>;
+  },
 ): Promise<RunSummary> {
   const summary: RunSummary = {
     checked: 0,
@@ -44,6 +50,32 @@ export async function runDigests(
     skipped: 0,
     failed: 0,
     pushed: 0,
+  };
+
+  // After the third failed try (the last one it gets), tell the person who looks after Yarn. Once only.
+  const alertIfGivenUp = async (
+    business: { id: string; name: string },
+    where: { business_id: string; kind: string; local_date: string },
+    what: string,
+  ) => {
+    if (!opts.alert) return;
+    try {
+      const { data: row } = await admin
+        .from("digest_log")
+        .select("attempts")
+        .match(where)
+        .maybeSingle();
+      if ((row?.attempts ?? 0) < 3) return;
+      await opts.alert(
+        `Yarn: ${business.name}'s ${where.kind === "morning" ? "morning briefing" : "day wrap-up"} failed 3 times`,
+        `The ${where.kind === "morning" ? "morning briefing" : "day wrap-up"} for ${business.name} on ${where.local_date} failed 3 times, so Yarn has stopped trying for today.\n\nWhat went wrong: ${what}\n\nCheck Netlify (Functions, digest-cron) and Resend. Nothing else needs doing: tomorrow's one will be tried as normal.`,
+      );
+    } catch (e) {
+      console.error(
+        "Couldn't send the alert:",
+        e instanceof Error ? e.message : e,
+      );
+    }
   };
 
   const { data: businesses, error } = await admin
@@ -170,6 +202,11 @@ export async function runDigests(
             })
             .match(where);
           summary.failed++;
+          await alertIfGivenUp(
+            business,
+            where,
+            problems.join("; ") || "unknown",
+          );
         }
       } catch (e) {
         console.error("Digest failed:", business.id, due.kind, e);
@@ -182,6 +219,11 @@ export async function runDigests(
           })
           .match(where);
         summary.failed++;
+        await alertIfGivenUp(
+          business,
+          where,
+          e instanceof Error ? e.message.slice(0, 200) : "unknown error",
+        );
       }
     }
   }

@@ -34,12 +34,13 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isLoginPage = path === "/login";
   // pages a logged-out person is allowed to see
-  // (/api/cron/ is for Yarn's own timer; it checks a secret itself.)
+  // (/api/cron/ is for Yarn's own timer and /api/health is for a monitoring service; both check a secret themselves.)
   const isPublic =
     isLoginPage ||
     path === "/forgot-password" ||
     path.startsWith("/auth/") ||
-    path.startsWith("/api/cron/");
+    path.startsWith("/api/cron/") ||
+    path === "/api/health";
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
