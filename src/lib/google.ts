@@ -8,6 +8,11 @@ const REVOKE_URL = process.env.GOOGLE_REVOKE_URL ?? "https://oauth2.googleapis.c
 // Add and change events on her calendars. "openid email" only tells us which account was connected.
 const SCOPES = "https://www.googleapis.com/auth/calendar.events openid email";
 
+// Gmail is a separate, optional connection. Read mail (to find the email being replied to) and create
+// drafts (to save the reply). There is deliberately no permission to send mail.
+export const GMAIL_SCOPES =
+  "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose openid email";
+
 export function googleConfig() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -21,13 +26,13 @@ export function redirectUri(origin: string) {
   return process.env.GOOGLE_REDIRECT_URI ?? `${origin}/api/google/callback`;
 }
 
-export function authUrl(clientId: string, origin: string, state: string) {
+export function authUrl(clientId: string, origin: string, state: string, scope: string = SCOPES) {
   const url = new URL(AUTH_URL);
   url.search = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri(origin),
     response_type: "code",
-    scope: SCOPES,
+    scope,
     // "offline" + "consent" make Google hand back the long-lived key every time.
     access_type: "offline",
     prompt: "consent",

@@ -48,10 +48,10 @@ const Card = z.object({
   // "email" cards only. These are plain required fields with "none" / "" / -1 meaning "not applicable",
   // NOT nullable ones: Anthropic's structured output allows at most 16 nullable fields in a schema,
   // and the fields above already use 14 of them.
-  email_kind: z.enum(["none", "reschedule", "cancel", "other"]),
+  email_kind: z.enum(["none", "reschedule", "cancel", "other", "reply"]),
   email_note: z.string(), // about a move or cancel: the reason, as one friendly sentence ("" if none)
-  email_subject: z.string(), // kind "other" ("" otherwise)
-  email_body: z.string(), // kind "other": the message, without greeting or sign-off ("" otherwise)
+  email_subject: z.string(), // kind "other" (the subject), or kind "reply" (a word or two to find the email, like "quote"); "" otherwise
+  email_body: z.string(), // kinds "other" and "reply": what the tradie wants to say, without greeting or sign-off ("" otherwise)
   goes_with_card: z.number().int(), // 0-based position of the reschedule or cancel card the email is about (-1 if none)
 });
 

@@ -9,8 +9,9 @@ import { encryptToken } from "@/lib/token-crypto";
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin;
   const params = request.nextUrl.searchParams;
+  const isGmail = request.cookies.get("yarn_google_state")?.value.startsWith("gmail.") ?? false;
   const finish = (why: string) => {
-    const response = NextResponse.redirect(new URL(`/settings?google=${why}`, origin));
+    const response = NextResponse.redirect(new URL(`/settings?${isGmail ? "gmail" : "google"}=${why}`, origin));
     response.cookies.delete({ name: "yarn_google_state", path: "/api/google" });
     return response;
   };
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
   if (error || !refreshToken) return finish(error ? "failed" : "norefresh");
 
   const supabase = await createClient();
-  const { error: saveError } = await supabase.from("google_connections").upsert({
+  const { error: saveError } = await supabase.from(isGmail ? "gmail_connections" : "google_connections").upsert({
     business_id: business.id,
     google_email: email,
     refresh_token_enc: encryptToken(refreshToken),

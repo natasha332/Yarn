@@ -82,9 +82,31 @@ const SAVED: Record<string, { ok: boolean; text: string }> = {
   failed: { ok: false, text: "That didn't save. Try once more." },
 };
 
+async function disconnectGmail() {
+  "use server";
+  const business = await requireBusiness();
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("gmail_connections")
+    .select("refresh_token_enc")
+    .eq("business_id", business.id)
+    .maybeSingle();
+  await supabase.from("gmail_connections").delete().eq("business_id", business.id);
+  if (data) {
+    try {
+      await revokeToken(decryptToken(data.refresh_token_enc));
+    } catch {
+      // Unreadable key: nothing to hand back to Google. The connection is gone from Yarn anyway.
+    }
+  }
+  redirect("/settings?gmail=disconnected");
+}
+
 const NOTES: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Connected. Yarn can now use your Google Calendar." },
   disconnected: { ok: true, text: "Disconnected. Yarn can no longer see your Google Calendar." },
+  gmail_connected: { ok: true, text: "Gmail connected. Yarn can now find emails to reply to." },
+  gmail_disconnected: { ok: true, text: "Gmail disconnected. Yarn can no longer see your email." },
   denied: { ok: false, text: "No worries, nothing was connected. Google said you didn't allow it." },
   norefresh: {
     ok: false,
@@ -327,17 +349,74 @@ async function ClientEmailCard() {
   );
 }
 
+async function GmailCard() {
+  const business = await requireBusiness();
+  const supabase = await createClient();
+  const { data: connection } = await supabase
+    .from("gmail_connections")
+    .select("google_email, connected_at")
+    .maybeSingle();
+
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+      <h2 className="font-display text-2xl font-bold leading-none">Gmail</h2>
+      {connection ? (
+        <>
+          <p>
+            <span className="font-semibold text-invoice">✓ Connected</span>
+            {connection.google_email ? <> as <b>{connection.google_email}</b></> : null}
+          </p>
+          <p className="text-muted">
+            Since {formatLongDay(dateIn(business.timezone, new Date(connection.connected_at)))}. Say &quot;reply to
+            Robyn&quot; and Yarn finds her email, writes the reply and saves it in your Gmail drafts. It can read mail
+            and make drafts. It can&apos;t send anything.
+          </p>
+          <form action={disconnectGmail}>
+            <button className="h-12 rounded-xl border border-line px-5 font-semibold">Disconnect Gmail</button>
+          </form>
+        </>
+      ) : googleConfig() ? (
+        <>
+          <p className="text-muted">
+            Connect Gmail and Yarn can find an email you want to reply to, even if you haven&apos;t saved the
+            client&apos;s address, and save your reply as a draft in Gmail. You press Send yourself.
+          </p>
+          {/* A plain link, not a Next.js Link: this must not be pre-loaded in the background. */}
+          <a
+            href="/api/gmail/connect"
+            className="flex h-14 items-center justify-center rounded-xl bg-accent text-lg font-semibold text-accent-ink"
+          >
+            Connect Gmail
+          </a>
+          <p className="text-sm text-muted">
+            Yarn only reads the emails it needs for a reply you ask for, and it can&apos;t send or delete anything.
+          </p>
+        </>
+      ) : (
+        <p className="text-muted">Google isn&apos;t set up on the server yet.</p>
+      )}
+    </section>
+  );
+}
+
 async function Content({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string; saved?: string }>;
+  searchParams: Promise<{ google?: string; saved?: string; gmail?: string }>;
 }) {
-  const { google, saved } = await searchParams;
-  const flash = saved ? SAVED[saved] : google ? NOTES[google] : undefined;
+  const { google, saved, gmail } = await searchParams;
+  const flash = saved
+    ? SAVED[saved]
+    : gmail
+      ? (NOTES[`gmail_${gmail}`] ?? NOTES[gmail])
+      : google
+        ? NOTES[google]
+        : undefined;
   return (
     <>
       <Flash message={flash ? `${flash.ok ? "✓" : "⚠"} ${flash.text}` : null} />
       <GoogleCard result={google} />
+      <GmailCard />
       <BriefingCard />
       <ClientEmailCard />
     </>
@@ -349,7 +428,7 @@ export default function SettingsPage(props: PageProps<"/settings">) {
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 p-4">
       <h1 className="font-display text-4xl font-bold leading-none">Settings</h1>
       <Suspense fallback={<p className="text-muted">One sec…</p>}>
-        <Content searchParams={props.searchParams as Promise<{ google?: string; saved?: string }>} />
+        <Content searchParams={props.searchParams as Promise<{ google?: string; saved?: string; gmail?: string }>} />
       </Suspense>
     </main>
   );

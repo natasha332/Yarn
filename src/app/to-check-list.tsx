@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { announceCardsHandled } from "@/lib/card-events";
 import DateField from "./date-field";
@@ -35,6 +35,9 @@ function bookingWhen(date: string | null, start: string | null) {
 // A card is ready to confirm when it has what it needs.
 function needs(card: PendingCard): string | null {
   if (card.type === "email") {
+    const state = card.details.gmail?.state;
+    if (state === "lookup") return "Finding their email in Gmail…";
+    if (state === "choose") return "Choose which email to reply to";
     const to = card.details.email?.to;
     if (!to) return "Add an email address first";
     return isEmail(to) ? null : "That email address doesn't look right";
@@ -60,7 +63,10 @@ function needs(card: PendingCard): string | null {
 // The booking in Google Calendar that confirming this card adds or changes, if any.
 function calendarTarget(card: PendingCard) {
   if (card.type === "calendar") return { id: card.id, create: true };
-  if ((card.type === "reschedule" || card.type === "cancel") && card.details.target_item_id) {
+  if (
+    (card.type === "reschedule" || card.type === "cancel") &&
+    card.details.target_item_id
+  ) {
     return { id: card.details.target_item_id, create: false };
   }
   return null;
@@ -82,6 +88,22 @@ async function sendEmailCard(itemId: string): Promise<string | null> {
   }
 }
 
+// Saves a "reply to ..." card into Gmail as a draft. Returns an error message, or null when it worked.
+async function saveGmailDraft(itemId: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/gmail/draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemId }),
+    });
+    const body = await res.json().catch(() => null);
+    if (body?.status === "saved") return null;
+    return body?.message ?? "Couldn't save that draft. Try again.";
+  } catch {
+    return "Couldn't reach Yarn. Check your signal and try again.";
+  }
+}
+
 export default function ToCheckList({
   groups,
   timezone,
@@ -95,6 +117,30 @@ export default function ToCheckList({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null); // a card id, or "group:<key>"
 
+  // A "reply to ..." card that has just appeared goes and finds the email in Gmail by itself.
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    const lookups = groups
+      .flatMap((g) => g.cards)
+      .filter(
+        (c) =>
+          c.type === "email" &&
+          c.details.gmail?.state === "lookup" &&
+          !asked.current.has(c.id),
+      );
+    if (!lookups.length) return;
+    lookups.forEach((c) => asked.current.add(c.id));
+    void Promise.all(
+      lookups.map((c) =>
+        fetch("/api/gmail/prepare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: c.id }),
+        }).catch(() => null),
+      ),
+    ).then(() => router.refresh());
+  }, [groups, router]);
+
   function setError(id: string, message: string | null) {
     setErrors((e) => {
       const next = { ...e };
@@ -107,7 +153,10 @@ export default function ToCheckList({
   async function confirm(card: PendingCard): Promise<boolean> {
     setError(card.id, null);
     if (card.type === "email") {
-      const problem = await sendEmailCard(card.id);
+      const problem =
+        card.details.gmail?.state === "ready"
+          ? await saveGmailDraft(card.id)
+          : await sendEmailCard(card.id);
       if (problem) {
         setError(card.id, problem);
         return false;
@@ -131,14 +180,21 @@ export default function ToCheckList({
     setNotice(null);
     if (await confirm(card)) {
       setNotice(
-        card.type === "email"
-          ? `✓ Email sent to ${card.client_name ?? card.details.email?.to}`
-          : `✓ ${CARD_LABEL[card.type] ?? "Card"} confirmed: ${card.title}`,
+        card.type === "email" && card.details.gmail?.state === "ready"
+          ? "✓ Saved to your Gmail drafts"
+          : card.type === "email"
+            ? `✓ Email sent to ${card.client_name ?? card.details.email?.to}`
+            : `✓ ${CARD_LABEL[card.type] ?? "Card"} confirmed: ${card.title}`,
       );
+      if (card.type === "email" && card.details.gmail?.state === "ready") {
+        showToast("✓ Saved to your Gmail drafts. Open Gmail to send it.");
+      }
       const target = calendarTarget(card);
       if (target) {
         // The pop-up, not the notice above: that disappears with the last card.
-        const google = syncToast((await syncBooking(target.id, target.create)).status);
+        const google = syncToast(
+          (await syncBooking(target.id, target.create)).status,
+        );
         if (google) showToast(google);
       }
       router.refresh();
@@ -270,7 +326,9 @@ export default function ToCheckList({
   async function onHandOff(card: PendingCard) {
     const { error } = await createClient()
       .from("items")
-      .update({ details: { ...card.details, handed_off_at: new Date().toISOString() } })
+      .update({
+        details: { ...card.details, handed_off_at: new Date().toISOString() },
+      })
       .eq("id", card.id);
     if (!error) router.refresh();
   }
@@ -290,6 +348,26 @@ export default function ToCheckList({
       setNotice(`✓ Marked as sent: ${card.title}`);
       router.refresh();
     }
+    setBusy(null);
+  }
+
+  async function onChooseEmail(card: PendingCard, threadId: string) {
+    setBusy(card.id);
+    setError(card.id, null);
+    try {
+      const res = await fetch("/api/gmail/choose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: card.id, threadId }),
+      });
+      await res.json().catch(() => null);
+    } catch {
+      setError(
+        card.id,
+        "Couldn't reach Yarn. Check your signal and try again.",
+      );
+    }
+    router.refresh();
     setBusy(null);
   }
 
@@ -361,6 +439,7 @@ export default function ToCheckList({
               onDiscard={() => void onDiscard(card)}
               onChooseClient={(id) => void onChooseClient(card, id)}
               onChooseBooking={(b) => void onChooseBooking(card, b)}
+              onChooseEmail={(threadId) => void onChooseEmail(card, threadId)}
               onHandOff={() => void onHandOff(card)}
               onMarkSent={() => void onMarkSent(card)}
               onSaved={() => {
@@ -385,6 +464,7 @@ function CardView({
   onDiscard,
   onChooseClient,
   onChooseBooking,
+  onChooseEmail,
   onHandOff,
   onMarkSent,
   onSaved,
@@ -398,12 +478,18 @@ function CardView({
   onDiscard: () => void;
   onChooseClient: (clientId: string) => void;
   onChooseBooking: (booking: BookingSnapshot) => void;
+  onChooseEmail: (threadId: string) => void;
   onHandOff: () => void;
   onMarkSent: () => void;
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const mailto = card.type === "email" && card.details.email ? buildMailto(card.details.email) : null;
+  const gm = card.type === "email" ? card.details.gmail : null;
+  const gmailDraft = gm?.state === "ready"; // "Save to Gmail drafts" instead of "Send email"
+  const mailto =
+    card.type === "email" && !gmailDraft && card.details.email
+      ? buildMailto(card.details.email)
+      : null;
   const isChange = card.type === "reschedule" || card.type === "cancel";
   const d = card.details;
   const missing = needs(card);
@@ -452,28 +538,79 @@ function CardView({
       </span>
       <h3 className="text-lg font-semibold leading-snug">{card.title}</h3>
 
-      {card.type === "email" && d.email && (
+      {gm?.state === "lookup" && (
+        <p className="font-semibold text-todo">
+          Finding {card.client_name ?? "their"} email in your Gmail…
+        </p>
+      )}
+      {gm?.state === "choose" && (
         <div className="flex flex-col gap-2">
-          <p className="text-muted">
-            To:{" "}
-            <span className={d.email.to ? "font-mono text-sm" : "font-semibold text-variation"}>
-              {d.email.to ?? "no email address yet"}
-            </span>
-          </p>
-          <p className="whitespace-pre-wrap rounded-lg border border-line bg-bg p-3 text-base">
-            {d.email.body}
-          </p>
-          <p className="text-sm text-muted">
-            Send emails from Yarn (in your business name), or open it in your
-            own email app.
-          </p>
-          {d.handed_off_at && (
-            <p className="font-semibold text-todo">
-              Opened in your email app. Send it there, then tap Done.
-            </p>
-          )}
+          <p className="font-semibold">Which email?</p>
+          <div className="flex flex-col gap-2">
+            {(gm.candidates ?? []).map((c) => (
+              <button
+                key={c.threadId}
+                type="button"
+                onClick={() => onChooseEmail(c.threadId)}
+                disabled={busy}
+                className="flex min-h-12 flex-col items-start rounded-xl border border-line bg-bg px-4 py-2 text-left font-semibold disabled:opacity-50"
+              >
+                <span>{c.subject}</span>
+                <span className="font-mono text-xs font-normal text-muted">
+                  {c.fromName || c.fromAddress} ·{" "}
+                  {formatDay(c.date.slice(0, 10))}
+                </span>
+                {c.snippet && (
+                  <span className="text-sm font-normal text-muted">
+                    {c.snippet}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
+      {(gm?.state === "none" || gm?.state === "error") && gm.message && (
+        <p className="font-semibold text-todo">{gm.message}</p>
+      )}
+      {gmailDraft && gm?.subject && (
+        <p className="text-muted">
+          Replying to:{" "}
+          <span className="font-semibold text-ink">{gm.subject}</span>
+        </p>
+      )}
+      {card.type === "email" &&
+        d.email &&
+        gm?.state !== "lookup" &&
+        gm?.state !== "choose" && (
+          <div className="flex flex-col gap-2">
+            <p className="text-muted">
+              To:{" "}
+              <span
+                className={
+                  d.email.to
+                    ? "font-mono text-sm"
+                    : "font-semibold text-variation"
+                }
+              >
+                {d.email.to ?? "no email address yet"}
+              </span>
+            </p>
+            <p className="whitespace-pre-wrap rounded-lg border border-line bg-bg p-3 text-base">
+              {d.email.body}
+            </p>
+            <p className="text-sm text-muted">
+              {gmailDraft
+                ? "This goes into your Gmail drafts, in the same conversation. You press Send in Gmail."
+                : "Send emails from Yarn (in your business name), or open it in your own email app."}
+            </p>
+            {d.handed_off_at && (
+              <p className="font-semibold text-todo">
+                Opened in your email app. Send it there, then tap Done.
+              </p>
+            )}
+          </div>
+        )}
 
       {isChange && d.target && (
         <div className="flex flex-col gap-0.5">
@@ -628,20 +765,26 @@ function CardView({
           </>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={busy || !!missing || waitingForChange}
-              className={`${bigButton} flex-1 bg-ink text-surface`}
-            >
-              {busy
-                ? card.type === "email"
-                  ? "Sending…"
-                  : "One sec…"
-                : card.type === "email"
-                  ? "Send email"
-                  : "Confirm"}
-            </button>
+            {gm?.state !== "lookup" && gm?.state !== "choose" && (
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={busy || !!missing || waitingForChange}
+                className={`${bigButton} flex-1 bg-ink text-surface`}
+              >
+                {busy
+                  ? card.type === "email"
+                    ? gmailDraft
+                      ? "Saving…"
+                      : "Sending…"
+                    : "One sec…"
+                  : card.type === "email"
+                    ? gmailDraft
+                      ? "Save to Gmail drafts"
+                      : "Send email"
+                    : "Confirm"}
+              </button>
+            )}
             <button
               type="button"
               onClick={onDiscard}
@@ -652,7 +795,7 @@ function CardView({
             </button>
           </>
         )}
-        {card.type !== "cancel" && (
+        {card.type !== "cancel" && gm?.state !== "lookup" && (
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -968,7 +1111,9 @@ function EditEmail({
       onSubmit={save}
       className="flex flex-col gap-3 rounded-xl border border-accent bg-surface p-4"
     >
-      <span className={`text-xs font-bold uppercase tracking-wide ${CARD_TEXT_CLASS.email}`}>
+      <span
+        className={`text-xs font-bold uppercase tracking-wide ${CARD_TEXT_CLASS.email}`}
+      >
         Editing · Email to {card.client_name ?? "client"}
       </span>
       <label className="flex flex-col gap-1 font-semibold">

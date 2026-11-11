@@ -122,6 +122,8 @@ export async function POST(request: NextRequest) {
     };
   });
   const sender = await loadSender(supabase, user);
+  // "reply to Robyn" can look for the email in Gmail, but only when Gmail is connected.
+  const { data: gmailConnection } = await supabase.from("gmail_connections").select("business_id").maybeSingle();
   const clientEmails = new Map((clients ?? []).map((c) => [c.id, c.email as string | null]));
 
   // What's already in Yarn from the last 30 days, so a repeat can be spotted.
@@ -237,6 +239,28 @@ export async function POST(request: NextRequest) {
       ? []
       : card.client_options.filter((id) => clientIds.has(id));
     if (card.type === "email") {
+      if (card.email_kind === "reply" && gmailConnection && clientId) {
+        const reachable = (clientEmails.get(clientId) ?? null) as string | null;
+        return {
+          capture_id: captureId,
+          business_id: business.id,
+          type: "email",
+          title: `Reply to ${(names.get(clientId) ?? "client").split(/\s+/)[0]}`,
+          client_id: clientId,
+          job_id: null,
+          due_date: null,
+          start_time: null,
+          end_time: null,
+          details: {
+            email: { to: reachable && isEmail(reachable) ? reachable : null, subject: "", body: "", kind: "reply" },
+            gmail: { state: "lookup", instruction: (card.email_body.trim() || card.email_note.trim()).slice(0, 1000), hint: card.email_subject.trim().slice(0, 60) },
+            client_options: [],
+            duplicate_of: repeatedNote,
+          },
+          status: "pending",
+          position,
+        };
+      }
       const kind = card.email_kind === "reschedule" || card.email_kind === "cancel" ? card.email_kind : "other";
       // The change card this email is about (the one named, or the first of the right kind).
       const named = card.goes_with_card >= 0 ? card.goes_with_card : null;

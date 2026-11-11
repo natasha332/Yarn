@@ -140,6 +140,12 @@ http.createServer(async (req, res) => {
   }
   if (p === '/v1/messages' && req.method === 'POST') {
     const body = JSON.parse(raw.toString());
+    if (String(body.system || '').includes('You write the body of a short email reply')) {
+      state.writerCalls = (state.writerCalls || []).concat([{ system: body.system, content: String(body.messages[0].content), model: body.model }]);
+      if (state.writerFail) return json(500, { type: 'error', error: { type: 'api_error', message: 'boom' } });
+      const ins = (String(body.messages[0].content).match(/WHAT THE TRADIE WANTS TO SAY:\n([\s\S]*?)\n\nTHE CLIENT/) || [])[1] || '';
+      return json(200, { id: 'msg_w', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: ins ? `Thanks for that. ${ins}.` : 'Thanks, got it.' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } });
+    }
     state.anthropic.push({ content: String(body.messages[0].content), sawBookings: /UPCOMING BOOKINGS/.test(String(body.messages[0].content)) && (String(body.messages[0].content).split('UPCOMING BOOKINGS (JSON):\n')[1] || '').split('\n\n')[0], model: body.model, effort: body.output_config && body.output_config.effort, format: body.output_config && body.output_config.format && body.output_config.format.type, key: req.headers['x-api-key'] || req.headers['authorization'], system: String(body.system).slice(0, 60), user: body.messages[0].content });
     const note = body.messages[0].content.split('VOICE NOTE:\n')[1] || '';
     const bookings = (() => { try { return JSON.parse(body.messages[0].content.split('UPCOMING BOOKINGS (JSON):\n')[1].split('\n\n')[0]); } catch { return []; } })();
@@ -147,6 +153,8 @@ http.createServer(async (req, res) => {
     const card = o => ({ email_kind: 'none', email_note: '', email_subject: '', email_body: '', goes_with_card: -1, target_booking_id: null, target_options: [], date: null, start_time: null, end_time: null, client_id: null, client_options: [], job_id: null, new_client: null, job_status: null, address: null, notes: null, belongs_to_card: null, ...o });
     let cards = [];
     if (/BADDATA/.test(note)) cards = [card({ type: 'todo', title: 'Bad data card', client_id: 'cl-bogus', client_options: ['cl-robyn', 'cl-ghost'], date: 'next week', start_time: '25:99', belongs_to_card: 7 })];
+    else if (/REPLYROBYN/.test(note)) cards = [card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'reply', email_body: 'Thursday at 9 works for me', email_subject: /NOHINT/.test(note) ? '' : 'quote' })];
+    else if (/REPLYDAVE/.test(note)) cards = [card({ type: 'email', title: 'Email Dave', client_id: 'cl-dave', email_kind: 'reply', email_body: 'Yes, the grey one is fine', email_subject: /INVOICE/.test(note) ? 'invoice' : '' })];
     else if (/MOVETELL/.test(note)) cards = [card({ type: 'reschedule', title: 'Move Site visit', target_booking_id: bk('Site visit').id, date: '2026-11-12', start_time: '09:00' }), card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'reschedule', goes_with_card: 0, email_note: "It's because of a supplier delay." })];
     else if (/CANCELTELL/.test(note)) cards = [card({ type: 'cancel', title: 'Cancel Site visit', target_booking_id: bk('Site visit').id }), card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'cancel', goes_with_card: 0, email_note: "I've come down with the flu." })];
     else if (/EMAILROBYN/.test(note)) cards = [card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'other', email_subject: 'Quote ready', email_body: "Your quote is ready. I'll drop it round on Friday." })];
@@ -254,6 +262,37 @@ http.createServer(async (req, res) => {
   if (p === '/__digestlog') return json(200, Object.values(state.digestLog || {}));
   if (p === '/__digestreset') { state.digestLog = {}; return json(200, {}); }
   if (p === '/__bizset') { state.bizSettings = { ...(state.bizSettings || {}), ...JSON.parse(raw.toString()) }; return json(200, {}); }
+
+  if (p === '/rest/v1/gmail_connections') {
+    if (req.method === 'POST') { state.gmailConn = JSON.parse(raw.toString()); state.gmailSaves = (state.gmailSaves || 0) + 1; res.writeHead(201); return res.end(); }
+    if (req.method === 'DELETE') { state.gmailConn = null; res.writeHead(204); return res.end(); }
+    if (req.method === 'GET') return state.gmailConn ? json(200, wantsObject ? state.gmailConn : [state.gmailConn]) : wantsObject ? json(406, { code: 'PGRST116', message: 'no rows' }) : json(200, []);
+  }
+  if (p.startsWith('/gmail/')) {
+    state.gmailCalls = (state.gmailCalls || []).concat([{ method: req.method, path: p + url.search, auth: req.headers.authorization }]);
+    if (state.gmailFail) return json(state.gmailFail, { error: { message: 'boom' } });
+    const threads = state.gmailThreads || {};
+    const hdr = (m, n) => (m.headers.find(h => h.name.toLowerCase() === n.toLowerCase()) || {}).value;
+    const asMeta = t => ({ id: t.id, messages: t.messages.map(m => ({ id: m.id, internalDate: String(m.date), snippet: m.snippet || m.text.slice(0, 80), payload: { headers: m.headers } })) });
+    const asFull = t => ({ id: t.id, messages: t.messages.map(m => ({ id: m.id, internalDate: String(m.date), snippet: m.snippet || m.text.slice(0, 80), payload: { headers: m.headers, mimeType: 'multipart/alternative', parts: [{ mimeType: 'text/plain', body: { data: Buffer.from(m.text).toString('base64url') } }, { mimeType: 'text/html', body: { data: Buffer.from('<p>' + m.text + '</p>').toString('base64url') } }] } })) });
+    if (p === '/gmail/threads' && req.method === 'GET') {
+      const q = url.searchParams.get('q') || ''; state.gmailQueries = (state.gmailQueries || []).concat([q]);
+      const froms = [...q.matchAll(/from:(?:"([^"]+)"|(\S+?))(?=\)| OR |$|\s)/g)].map(m => (m[1] || m[2]).toLowerCase());
+      const words = q.replace(/\([^)]*\)/, '').replace(/newer_than:\S+/, '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const hits = Object.values(threads).filter(t => t.messages.some(m => froms.some(f => (hdr(m, 'From') || '').toLowerCase().includes(f))) && words.every(w => t.messages.some(m => (hdr(m, 'Subject') + ' ' + m.text).toLowerCase().includes(w))));
+      return json(200, { threads: hits.map(t => ({ id: t.id, snippet: '' })) });
+    }
+    const tm = p.match(/^\/gmail\/threads\/([^/]+)$/);
+    if (tm && req.method === 'GET') { const t = threads[decodeURIComponent(tm[1])]; if (!t) return json(404, {}); return json(200, url.searchParams.get('format') === 'full' ? asFull(t) : asMeta(t)); }
+    if (p === '/gmail/drafts' && req.method === 'POST') {
+      const body = JSON.parse(raw.toString()); const rawMail = Buffer.from(body.message.raw, 'base64url').toString('utf8');
+      state.gmailDrafts = (state.gmailDrafts || []).concat([{ id: 'dr-' + ((state.gmailDrafts || []).length + 1), threadId: body.message.threadId, raw: rawMail }]);
+      return json(200, { id: 'dr-' + state.gmailDrafts.length, message: { id: 'gm-1', threadId: body.message.threadId } });
+    }
+  }
+  if (p === '/__gmail') return json(200, { conn: state.gmailConn || null, saves: state.gmailSaves || 0, calls: state.gmailCalls || [], queries: state.gmailQueries || [], drafts: state.gmailDrafts || [], writers: state.writerCalls || [] });
+  if (p === '/__gmailreset') { state.gmailConn = null; state.gmailSaves = 0; state.gmailCalls = []; state.gmailQueries = []; state.gmailDrafts = []; state.gmailThreads = {}; state.gmailFail = 0; state.writerCalls = []; state.writerFail = false; return json(200, {}); }
+  if (p === '/__gmailseed') { const j = JSON.parse(raw.toString() || '{}'); if (j.conn) state.gmailConn = j.conn; if (j.thread) { state.gmailThreads = state.gmailThreads || {}; state.gmailThreads[j.thread.id] = j.thread; } if (j.fail !== undefined) state.gmailFail = j.fail; if (j.writerFail !== undefined) state.writerFail = j.writerFail; return json(200, {}); }
   if (p === '/rest/v1/google_connections') {
     if (req.method === 'POST') { state.google = JSON.parse(raw.toString()); state.googleSaves = (state.googleSaves || 0) + 1; res.writeHead(state.googleSaveFail ? 500 : 201); return res.end(); }
     if (req.method === 'DELETE') { state.google = null; res.writeHead(204); return res.end(); }
@@ -261,7 +300,7 @@ http.createServer(async (req, res) => {
   }
   if (p === '/google/token' && req.method === 'POST') {
     const f = new URLSearchParams(raw.toString()); state.googleTokenCalls = (state.googleTokenCalls || []).concat([Object.fromEntries(f)]);
-    if (f.get('grant_type') === 'refresh_token') return f.get('refresh_token') === '1//0g-REAL-REFRESH-TOKEN' ? json(200, { access_token: 'at-fresh' }) : json(400, { error: 'invalid_grant' });
+    if (f.get('grant_type') === 'refresh_token') return ['1//0g-REAL-REFRESH-TOKEN', '1//0g-GMAIL-REFRESH-TOKEN'].includes(f.get('refresh_token')) ? json(200, { access_token: 'at-fresh' }) : json(400, { error: 'invalid_grant' });
     const code = f.get('code');
     if (code === 'GOODCODE' || code === 'NOREFRESH') {
       const idt = `${b64({ alg: 'none' })}.${b64({ email: 'natasha@sundaykitchens.com.au' })}.x`;

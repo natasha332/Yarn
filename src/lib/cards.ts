@@ -58,7 +58,18 @@ export type CardDetails = {
   duplicate_of?: DuplicateOf | null;
   // "email" cards: what will be sent, and (when it tells a client about a move or cancel
   // made in the same note) the card that has to be confirmed first.
-  email?: { to: string | null; subject: string; body: string; kind: "reschedule" | "cancel" | "other" } | null;
+  email?: { to: string | null; subject: string; body: string; kind: "reschedule" | "cancel" | "other" | "reply" } | null;
+  // "reply to ..." cards: finding the email in Gmail and the reply written from it
+  gmail?: {
+    state: "lookup" | "choose" | "ready" | "none" | "error";
+    instruction: string;
+    hint: string;
+    message?: string;
+    candidates?: { threadId: string; fromName: string; fromAddress: string; subject: string; date: string; snippet: string }[];
+    thread_id?: string;
+    subject?: string;
+    draft_id?: string;
+  } | null;
   goes_with_card?: number | null;
   goes_with_item_id?: string | null;
   send_error?: string | null;

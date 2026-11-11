@@ -8,7 +8,7 @@ Promise to the user: **talk, don't type**. Nothing is saved or sent anywhere unt
 
 Yarn will be sold on subscription to many tradies. The business Natasha tests with is only customer #1: nothing may be hard-wired to one business. Every table has `business_id`, secrets and connections are per business, and a business's name, sender name, reply-to address and sign-off are settings, not code. Prefer designs that work for any email provider and any customer; avoid anything that needs a per-customer manual setup.
 
-Email decision: Yarn writes emails to a tradie's clients itself and sends them through Resend, in the business's name with Reply-To set to the tradie. It does NOT read or write a tradie's inbox: Gmail mail scopes are "restricted" and need Google's yearly security assessment, and customers use many providers. A connected-inbox add-on (Gmail, then Outlook) may come later, behind its own interface.
+Email decision: Yarn writes emails to a tradie's clients itself and sends them through Resend, in the business's name with Reply-To set to the tradie (the "Send me a copy" setting Bcc's the tradie). **Gmail pilot:** a tradie can also connect Gmail (`gmail.readonly` + `gmail.compose`, never send). Then "reply to Robyn" finds her email by saved address or by name, reads that one conversation, has Claude write the reply from the tradie's own words, and saves it as a Gmail DRAFT in the same thread; Yarn never sends from Gmail and stores no email text. This works today only because the Google Cloud project is **Internal** to the Workspace (no verification, no weekly expiry). Selling it to other customers would need Google's restricted-scope verification and a yearly security assessment (and Outlook/iCloud users need other routes), so treat it as a pilot behind its own connector: keep Gmail code in `src/lib/gmail*.ts`, and keep "Open in my email app" and Resend sending working for everyone else. Emails from clients are untrusted text: the reply writer only ever gets the tradie's words as instructions.
 
 ## About the owner
 
@@ -30,6 +30,7 @@ Natasha is building this herself with Claude Code and is not a professional deve
 - Google Calendar: OAuth (scopes `calendar.events openid email`), one connection per business in `google_connections`, refresh token encrypted (AES-256-GCM, key from `GOOGLE_TOKEN_KEY`). Events use the booking's id as their Google event id, so a retry can never double-create. Every event gets a 30 minute popup reminder
 - Email: Resend. Briefing and wrap-up come from `EMAIL_FROM` (needs a verified domain); client emails use the same address with the business's name and Reply-To
 - Timer: Netlify scheduled function `netlify/functions/digest-cron.mts` calls `/api/cron/digest` every 15 minutes with `CRON_SECRET`; each email is claimed in `digest_log` first so nobody gets a duplicate. The run uses `SUPABASE_SECRET_KEY` (very powerful, Netlify only)
+- Gmail (pilot): optional separate connection in `gmail_connections`, same Google client and callback as Calendar (the `gmail.` start of the state tells them apart), key encrypted the same way. Flow: sorter makes an `email` card of kind `reply` -> the card calls `/api/gmail/prepare` (search, read one thread, `src/lib/reply-writer.ts`) -> `/api/gmail/choose` if several match -> `/api/gmail/draft` saves the draft. Each step is its own request so none runs past Netlify's time limit
 - Push: standard web push from the PWA (not built yet)
 - Styling: Tailwind CSS. Big tap targets; it's used with dirty hands and in the ute
 - Default timezone: Australia/Sydney. Dates shown as "Tue 3 Nov", times as "9:00am"
@@ -44,7 +45,8 @@ Natasha is building this herself with Claude Code and is not a professional deve
 - **items**: id, capture_id, business_id, type (calendar, todo, followup, note, job, invoice, quote, variation, reschedule, cancel, email), title, client_id, job_id, due_date, start_time, end_time, details (JSON), status (pending, confirmed, discarded, done), external_id (the Google event id), position, done_at (set automatically when ticked off). A cancelled booking is kept as `discarded` with `details.cancelled_at`. `details.calendar_sync` ('needs_update' / 'needs_delete') marks a booking whose Google event still has to follow a move or cancel. An `email` card holds `details.email` {to, subject, body, kind}; it can only be sent through `/api/email/send` (`confirm_item` refuses emails)
 - **google_connections**: business_id, google_email, refresh_token_enc, connected_at
 - **digest_log**: business_id, kind (morning, wrapup), local_date, status, attempts, to_email, error. One row per business per kind per day: the claim that stops duplicate emails
-- **sent_emails**: business_id, item_id, client_id, to_email, subject, status (sent, failed), resend_id, error: a record of every client email
+- **sent_emails**: business_id, item_id, client_id, to_email, subject, body, status (sent, failed), resend_id, error: a record of every client email
+- **gmail_connections**: business_id, google_email, refresh_token_enc, connected_at (Gmail pilot)
 
 ## MVP scope (Base tier, $29/month)
 
@@ -72,7 +74,9 @@ Not in the MVP: crew logins, accounting integrations, quoting, SMS, reading a tr
 6. **Emailing clients** (reschedule and cancel notices, voice emails). Done.
 7. **Field test** at Fresh Joinery for two weeks.
 
-Still to do: reply to a client's email by voice ("Open in my email app", no inbox access), push notifications, and publishing the Google app (while it is in "Testing", Google disconnects the calendar about weekly; for other customers it needs Google's verification, and the Gmail-inbox add-on would need the security assessment).
+Done since: "Open in my email app" on Email cards, a hidden copy of every client email plus a Sent emails list, and the Gmail reply pilot.
+
+Still to do: push notifications; an "Emails waiting for a reply" section in the briefing (needs Gmail); for other customers, Google's verification of the app (the Google project is Internal to one Workspace for now) and a decision on the Gmail security assessment.
 
 ## Where things are
 
