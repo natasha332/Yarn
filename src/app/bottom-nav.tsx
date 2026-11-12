@@ -10,6 +10,7 @@ const HIDDEN_ON = [
   "/forgot-password",
   "/reset-password",
   "/onboarding",
+  "/welcome",
   "/auth",
 ];
 

@@ -77,7 +77,7 @@ Not in the MVP: crew logins, accounting integrations, quoting, SMS, reading a tr
 
 Done since: "Open in my email app" on Email cards, a hidden copy of every client email plus a Sent emails list, and the Gmail reply pilot.
 
-Also done: push notifications.
+Also done: push notifications, failure alerts (`ALERT_EMAIL`, `/api/health` + `HEALTH_TOKEN`), the move to `app.letsyarn.com.au` (mail from `mail.letsyarn.com.au`), and a "How Yarn works" tour (`/welcome`, shown after setup and linked from Settings).
 
 Still to do: an "Emails waiting for a reply" section in the briefing (needs Gmail); for other customers, Google's verification of the app (the Google project is Internal to one Workspace for now) and a decision on the Gmail security assessment.
 

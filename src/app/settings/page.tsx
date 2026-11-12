@@ -566,6 +566,12 @@ async function Content({
       <GmailCard />
       <BriefingCard />
       <ClientEmailCard />
+      <Link
+        href="/welcome"
+        className="rounded-2xl border border-line bg-surface p-4 text-lg font-semibold underline"
+      >
+        How Yarn works
+      </Link>
     </>
   );
 }

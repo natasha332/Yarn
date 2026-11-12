@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const TIMEZONES = [
-  { value: "Australia/Sydney", label: "Sydney, Canberra, Newcastle (NSW, ACT)" },
+  {
+    value: "Australia/Sydney",
+    label: "Sydney, Canberra, Newcastle (NSW, ACT)",
+  },
   { value: "Australia/Melbourne", label: "Melbourne (VIC)" },
   { value: "Australia/Brisbane", label: "Brisbane (QLD)" },
   { value: "Australia/Adelaide", label: "Adelaide (SA)" },
@@ -39,7 +42,7 @@ export default function OnboardingForm() {
       setBusy(false);
       return;
     }
-    router.replace("/");
+    router.replace("/welcome");
     router.refresh();
   }
 
