@@ -10,7 +10,7 @@ const get = p => fetch('http://localhost:4000' + p).then(r => r.json());
 const post = (p, b) => fetch('http://localhost:4000' + p, { method: 'POST', body: JSON.stringify(b || {}) }).then(r => r.json());
 let fails = 0; const ok = (l, c) => { if (!c) fails++; console.log(`   ${c ? 'PASS' : 'FAIL'} - ${l}`); };
 async function login(b, port) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); await ctx.addInitScript(require('./open-settings.js')); const p = await ctx.newPage();
   p.on('pageerror', e => console.log('  PAGE ERROR', e.message));
   await p.goto(`http://localhost:${port}/login`);
   await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]');

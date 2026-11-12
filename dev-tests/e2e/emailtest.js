@@ -9,7 +9,7 @@ const get = path => fetch('http://localhost:4000' + path).then(r => r.json());
 let fails = 0; const ok = (l, c) => { if (!c) fails++; console.log(`   ${c ? 'PASS' : 'FAIL'} - ${l}`); };
 const sydney = n => { const d = new Date(Date.now() + n * 864e5); return new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); };
 async function login(b, port) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); await ctx.addInitScript(require('./open-settings.js')); const p = await ctx.newPage();
   p.on('pageerror', e => console.log('  PAGE ERROR', e.message));
   await p.goto(`http://localhost:${port}/login`); await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]');
   await p.waitForSelector('text=Recent notes'); return { ctx, p };

@@ -109,3 +109,22 @@ select:focus-visible {
     height: 70%;
   }
 }
+
+/* Every button and big link gives a clear "pressed" response: it shrinks a touch and darkens. */
+button,
+a[class*="rounded-xl"] {
+  transition:
+    scale 0.08s ease,
+    filter 0.08s ease;
+}
+button:not(:disabled):active,
+a[class*="rounded-xl"]:active {
+  scale: 0.97;
+  filter: brightness(0.88);
+}
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a[class*="rounded-xl"] {
+    transition: none;
+  }
+}

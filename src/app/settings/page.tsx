@@ -5,10 +5,12 @@ import { requireBusiness } from "@/lib/business";
 import { googleConfig, revokeToken } from "@/lib/google";
 import { createClient } from "@/lib/supabase/server";
 import { decryptToken } from "@/lib/token-crypto";
-import { dateIn, formatDay, formatLongDay } from "@/lib/format";
+import { dateIn, formatClock, formatDay, formatLongDay } from "@/lib/format";
 import { isEmail } from "@/lib/client-email";
 import { senderAddress } from "@/lib/resend";
 import Flash from "./flash";
+import Section, { Chevron } from "./section";
+import SubmitButton from "./submit-button";
 import NotificationSetup from "./notification-setup";
 import TestEmail from "./test-email";
 
@@ -44,7 +46,7 @@ async function saveBriefing(formData: FormData) {
   };
   const morning = time("morning_time");
   const wrapup = time("wrapup_time");
-  if (!morning || !wrapup) redirect("/settings?saved=badtime");
+  if (!morning || !wrapup) redirect("/settings?saved=badtime&section=briefing");
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -61,7 +63,7 @@ async function saveBriefing(formData: FormData) {
       wrapup_time: wrapup,
     })
     .eq("id", business.id);
-  redirect(`/settings?saved=${error ? "failed" : "ok"}`);
+  redirect(`/settings?saved=${error ? "failed" : "ok"}&section=briefing`);
 }
 
 async function saveEmailIdentity(formData: FormData) {
@@ -72,7 +74,8 @@ async function saveEmailIdentity(formData: FormData) {
       .trim()
       .slice(0, max);
   const replyTo = text("reply_to", 254);
-  if (replyTo && !isEmail(replyTo)) redirect("/settings?saved=badreply");
+  if (replyTo && !isEmail(replyTo))
+    redirect("/settings?saved=badreply&section=email");
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -84,7 +87,7 @@ async function saveEmailIdentity(formData: FormData) {
       email_copy_to_me: formData.get("copy_to_me") === "on",
     })
     .eq("id", business.id);
-  redirect(`/settings?saved=${error ? "failed" : "ok"}`);
+  redirect(`/settings?saved=${error ? "failed" : "ok"}&section=email`);
 }
 
 const SAVED: Record<string, { ok: boolean; text: string }> = {
@@ -162,11 +165,15 @@ async function GoogleCard({ result }: { result?: string }) {
   const note = result ? NOTES[result] : undefined;
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
-      <h2 className="font-display text-2xl font-bold leading-none">
-        Google Calendar
-      </h2>
-
+    <Section
+      title="Google Calendar"
+      open={!!result}
+      summary={
+        connection
+          ? `✓ Connected${connection.google_email ? ` · ${connection.google_email}` : ""}`
+          : "Not connected"
+      }
+    >
       {note && (
         <p
           role="status"
@@ -195,9 +202,9 @@ async function GoogleCard({ result }: { result?: string }) {
             . Bookings go on your main calendar with a 30 minute reminder.
           </p>
           <form action={disconnectGoogle}>
-            <button className="h-12 rounded-xl border border-line px-5 font-semibold">
+            <SubmitButton variant="outline" pendingText="Disconnecting…">
               Disconnect
-            </button>
+            </SubmitButton>
           </form>
         </>
       ) : googleConfig() ? (
@@ -223,14 +230,14 @@ async function GoogleCard({ result }: { result?: string }) {
           Google isn&apos;t set up on the server yet.
         </p>
       )}
-    </section>
+    </Section>
   );
 }
 
 const hhmm = (t: string | null | undefined, fallback: string) =>
   (t ?? fallback).slice(0, 5);
 
-async function BriefingCard() {
+async function BriefingCard({ open }: { open: boolean }) {
   const business = await requireBusiness();
   const supabase = await createClient();
   const [{ data: settings }, { data: google }, { data: auth }, { data: log }] =
@@ -269,13 +276,21 @@ async function BriefingCard() {
   const sendTo = google?.google_email ?? auth.user?.email ?? null;
   const box =
     "h-12 rounded-xl border border-line bg-bg px-3 text-base font-normal";
+  const channelText = { email: "Email", push: "Phone", both: "Phone + email" }[
+    (settings?.notify_channel ?? "email") as "email" | "push" | "both"
+  ];
+  const summary = [
+    (settings?.morning_enabled ?? true)
+      ? `Morning ${formatClock(hhmm(settings?.morning_email_time, "07:00"))}`
+      : "Morning off",
+    (settings?.wrapup_mode ?? "end_of_day") !== "off"
+      ? `Wrap-up ${formatClock(hhmm(settings?.wrapup_time, "17:00"))}`
+      : "Wrap-up off",
+    channelText,
+  ].join(" · ");
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
-      <h2 className="font-display text-2xl font-bold leading-none">
-        Daily briefing
-      </h2>
-
+    <Section title="Daily briefing" open={open} summary={summary}>
       <form action={saveBriefing} className="flex flex-col gap-5">
         <fieldset className="flex flex-col gap-1">
           <legend className="mb-1 text-sm font-semibold">
@@ -366,28 +381,33 @@ async function BriefingCard() {
           ) : null}
         </p>
 
-        <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">
-          Save
-        </button>
+        <SubmitButton>Save</SubmitButton>
       </form>
-
-      <div className="flex flex-col gap-1 border-t border-line pt-4 text-sm text-muted">
-        <p className="font-semibold text-ink">Last sent</p>
-        <p>{lastLine("Morning briefing", lastOf("morning"))}</p>
-        <p>{lastLine("Day wrap-up", lastOf("wrapup"))}</p>
-      </div>
 
       <div className="flex flex-col gap-3 border-t border-line pt-4">
         <p className="font-semibold">Notifications on this phone</p>
         <NotificationSetup publicKey={process.env.VAPID_PUBLIC_KEY ?? null} />
       </div>
 
-      <TestEmail />
-    </section>
+      <details className="group rounded-xl border border-line bg-bg">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 font-semibold [&::-webkit-details-marker]:hidden">
+          Check it&apos;s working
+          <Chevron />
+        </summary>
+        <div className="flex flex-col gap-4 border-t border-line p-3">
+          <div className="flex flex-col gap-1 text-sm text-muted">
+            <p className="font-semibold text-ink">Last sent</p>
+            <p>{lastLine("Morning briefing", lastOf("morning"))}</p>
+            <p>{lastLine("Day wrap-up", lastOf("wrapup"))}</p>
+          </div>
+          <TestEmail />
+        </div>
+      </details>
+    </Section>
   );
 }
 
-async function ClientEmailCard() {
+async function ClientEmailCard({ open }: { open: boolean }) {
   const business = await requireBusiness();
   const supabase = await createClient();
   const [{ data: settings }, { data: auth }, { data: person }] =
@@ -410,10 +430,11 @@ async function ClientEmailCard() {
     .join("\n");
 
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-4">
-      <h2 className="font-display text-2xl font-bold leading-none">
-        Emails to clients
-      </h2>
+    <Section
+      title="Emails to clients"
+      open={open}
+      summary={`Sent as ${settings?.email_from_name || business.name}`}
+    >
       <p className="text-muted">
         When Yarn writes to a client for you (like &quot;your booking has
         moved&quot;), you read it and tap Send. It goes out as{" "}
@@ -467,9 +488,7 @@ async function ClientEmailCard() {
           The copy goes to your reply-to address, so you can read what your
           client got. It arrives in your inbox, not your Sent folder.
         </p>
-        <button className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink">
-          Save
-        </button>
+        <SubmitButton>Save</SubmitButton>
       </form>
       <Link
         href="/settings/sent"
@@ -477,11 +496,11 @@ async function ClientEmailCard() {
       >
         See the emails Yarn has sent →
       </Link>
-    </section>
+    </Section>
   );
 }
 
-async function GmailCard() {
+async function GmailCard({ open }: { open: boolean }) {
   const business = await requireBusiness();
   const supabase = await createClient();
   const { data: connection } = await supabase
@@ -490,8 +509,15 @@ async function GmailCard() {
     .maybeSingle();
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
-      <h2 className="font-display text-2xl font-bold leading-none">Gmail</h2>
+    <Section
+      title="Gmail"
+      open={open}
+      summary={
+        connection
+          ? `✓ Connected${connection.google_email ? ` · ${connection.google_email}` : ""}`
+          : "Not connected"
+      }
+    >
       {connection ? (
         <>
           <p>
@@ -513,9 +539,9 @@ async function GmailCard() {
             make drafts. It can&apos;t send anything.
           </p>
           <form action={disconnectGmail}>
-            <button className="h-12 rounded-xl border border-line px-5 font-semibold">
+            <SubmitButton variant="outline" pendingText="Disconnecting…">
               Disconnect Gmail
-            </button>
+            </SubmitButton>
           </form>
         </>
       ) : googleConfig() ? (
@@ -542,16 +568,21 @@ async function GmailCard() {
           Google isn&apos;t set up on the server yet.
         </p>
       )}
-    </section>
+    </Section>
   );
 }
 
 async function Content({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string; saved?: string; gmail?: string }>;
+  searchParams: Promise<{
+    google?: string;
+    saved?: string;
+    gmail?: string;
+    section?: string;
+  }>;
 }) {
-  const { google, saved, gmail } = await searchParams;
+  const { google, saved, gmail, section } = await searchParams;
   const flash = saved
     ? SAVED[saved]
     : gmail
@@ -562,10 +593,10 @@ async function Content({
   return (
     <>
       <Flash message={flash ? `${flash.ok ? "✓" : "⚠"} ${flash.text}` : null} />
+      <BriefingCard open={section === "briefing"} />
+      <ClientEmailCard open={section === "email"} />
       <GoogleCard result={google} />
-      <GmailCard />
-      <BriefingCard />
-      <ClientEmailCard />
+      <GmailCard open={!!gmail} />
       <Link
         href="/welcome"
         className="rounded-2xl border border-line bg-surface p-4 text-lg font-semibold underline"
@@ -587,6 +618,7 @@ export default function SettingsPage(props: PageProps<"/settings">) {
               google?: string;
               saved?: string;
               gmail?: string;
+              section?: string;
             }>
           }
         />

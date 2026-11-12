@@ -23,7 +23,7 @@ const order = (html, ...names) => names.map(n => html.indexOf(n)).every((x, i, a
 const toast = async (p, t) => p.waitForFunction(x => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes(x)), t, { timeout: 15000 });
 (async () => {
   for (let i = 0; i < 60; i++) { try { if ((await fetch('http://localhost:3000/login')).ok && (await fetch('http://localhost:4000/__state')).ok) break; } catch {} await new Promise(r => setTimeout(r, 500)); }
-  const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
+  const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); await ctx.addInitScript(require('./open-settings.js')); const p = await ctx.newPage();
   await p.goto('http://localhost:3000/login'); await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]'); await p.waitForSelector('text=Recent notes');
   const sendTest = async kind => { await p.goto('http://localhost:3000/settings'); await p.waitForSelector('text=Send me a test briefing'); await p.getByRole('button', { name: kind === 'morning' ? 'Send me a test briefing' : 'Send me a test wrap-up' }).click(); await toast(p, 'Sent to'); await new Promise(r => setTimeout(r, 300)); };
 

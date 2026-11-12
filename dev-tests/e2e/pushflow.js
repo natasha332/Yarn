@@ -38,7 +38,7 @@ const setChannel = async (channel, extra = {}) => { const n = sydMin(); await po
 const run = (port = 3000) => fetch(`http://localhost:${port}/api/cron/digest`, { method: 'POST', headers: { Authorization: `Bearer ${SECRET}` } }).then(r => r.json());
 const toast = (p, t) => p.waitForFunction(x => [...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes(x)), t, { timeout: 15000 });
 async function login(b, port = 3000, ctxOpts = {}, init) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, ...ctxOpts }); if (init) await ctx.addInitScript(init.fn, init.arg);
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, ...ctxOpts }); if (init) await ctx.addInitScript(init.fn, init.arg); await ctx.addInitScript(require('./open-settings.js'));
   const p = await ctx.newPage(); p.on('pageerror', e => console.log('  PAGE ERROR', e.message));
   await p.goto(`http://localhost:${port}/login`); await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]'); await p.waitForSelector('text=Recent notes'); return { ctx, p };
 }
@@ -110,7 +110,7 @@ const phone = (dev, perm) => ({ fn: ({ endpoint, p256dh, auth, perm }) => {
     const r = await run(); const log = await pushLog();
     ok('push-only: sent to both working phones, and no email', r.sent === 1 && r.pushed === 2 && (await get('/__emails')).length === 0);
     const m = decrypt(log.find(x => x.name === 'okA').body, d1);
-    ok('the lock-screen text', m.title === `Today, ${lab(T)}` && m.body === '1 appointment · 1 to-do. First up: 9:00am Consult at Priya\'s' && m.url === '/today');
+    ok('the lock-screen text', m.title === `Today, ${lab(T)}` && m.body === "9:00am Consult at Priya's\nTo do: Order hinges" && m.url === '/today');
     ok('each phone got a message only it can read', decrypt(log.find(x => x.name === 'okB').body, d2).title === m.title && log.find(x => x.name === 'okA').body !== log.find(x => x.name === 'okB').body);
     ok('a phone that has removed the subscription (410) is forgotten', !(await get('/__pushsubs')).some(s => s.endpoint === dg.endpoint) && (await get('/__pushsubs')).length === 2);
     const row = (await get('/__digestlog'))[0]; ok('logged as sent by push', row.status === 'sent' && row.channels === 'push' && !row.error);
@@ -134,7 +134,7 @@ const phone = (dev, perm) => ({ fn: ({ endpoint, p256dh, auth, perm }) => {
   { await reset(); await setChannel('push', { morning_enabled: true, wrapup_mode: 'end_of_day', wrapup_time: hhmm(Math.max(0, sydMin() - 3)), morning_email_time: hhmm(sydMin() + 600) });
     const d = device('wrapA'); await seedDevice(d); await post('/__seed', { items: [{ type: 'todo', status: 'done', title: 'Ticked today', done_at: new Date().toISOString() }, { type: 'calendar', status: 'confirmed', title: 'Tomorrow job', due_date: sydDay(1), start_time: '08:30:00' }] });
     await run(); const m = decrypt((await pushLog())[0].body, d);
-    ok('the wrap-up notification', m.title === `Wrap-up, ${lab(T)}` && m.body === '1 done · 0 still open. Tomorrow: 8:30am Tomorrow job' && m.url === '/today'); }
+    ok('the wrap-up notification', m.title === `Wrap-up, ${lab(T)}` && m.body === 'Nothing left open. Nice work.\nTomorrow: 8:30am Tomorrow job' && m.url === '/today'); }
 
   console.log('4. What the phone does when a notification arrives (the real service worker file)');
   { await reset(); const ctx = await b.newContext(); const p = await ctx.newPage();

@@ -25,7 +25,7 @@ const seedThreads = async () => {
 };
 const reset = async () => { await post('/__reset'); await post('/__bizreset'); await post('/__googlereset'); await post('/__gmailreset'); await post('/__emailsreset'); await post('/__sentreset'); await post('/__bizset', { email_from_name: 'Tabrez – Sunday Kitchens', email_reply_to: ME, email_sign_off: 'Tabrez\nSunday Kitchens' }); };
 async function open(b, w = 390) {
-  const ctx = await b.newContext({ viewport: { width: w, height: 844 }, permissions: ['microphone'] }); const p = await ctx.newPage();
+  const ctx = await b.newContext({ viewport: { width: w, height: 844 }, permissions: ['microphone'] }); await ctx.addInitScript(require('./open-settings.js')); const p = await ctx.newPage();
   p.on('pageerror', e => console.log('  PAGE ERROR', e.message));
   await p.goto('http://localhost:3000/login'); await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]');
   await p.waitForSelector('button[aria-label="Start recording"]'); await p.waitForSelector('text=Recent notes'); return { ctx, p };

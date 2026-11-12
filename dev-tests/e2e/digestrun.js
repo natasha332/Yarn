@@ -75,7 +75,7 @@ const reset = async () => { await post('/__reset'); await post('/__bizreset'); a
 
   console.log('8. Settings shows when they last went out');
   await reset(); await setTimes(); await run();
-  const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
+  const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); await ctx.addInitScript(require('./open-settings.js')); const p = await ctx.newPage();
   await p.goto('http://localhost:3000/login'); await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]'); await p.waitForSelector('text=Recent notes');
   await p.goto('http://localhost:3000/settings'); await p.waitForSelector('text=Last sent');
   ok('morning briefing shows as sent', await p.locator('text=/Morning briefing: ✓ sent/').count() === 1);

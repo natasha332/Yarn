@@ -17,7 +17,7 @@ const mails = () => get('/__emails');
 const waitMails = async n => { for (let i = 0; i < 60 && (await mails()).length < n; i++) await new Promise(r => setTimeout(r, 250)); return mails(); };
 const reset = async () => { await post('/__reset'); await post('/__bizreset'); await post('/__emailsreset'); await post('/__sentreset'); };
 async function open(b) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, permissions: ['microphone'] }); const p = await ctx.newPage();
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, permissions: ['microphone'] }); await ctx.addInitScript(require('./open-settings.js')); const p = await ctx.newPage();
   p.on('pageerror', e => console.log('  PAGE ERROR', e.message));
   await p.goto('http://localhost:3000/login'); await p.fill('input[type=email]', 'natasha@example.com'); await p.fill('input[type=password]', 'password123'); await p.click('button[type=submit]');
   await p.waitForSelector('button[aria-label="Start recording"]'); await p.waitForSelector('text=Recent notes'); return { ctx, p };
