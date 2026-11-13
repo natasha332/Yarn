@@ -1,3 +1,4 @@
+import { matchContact } from "@/lib/contact-match";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { NextResponse, type NextRequest } from "next/server";
@@ -166,7 +167,8 @@ export async function POST(request: NextRequest) {
   );
   const clientIds = new Set((clients ?? []).map((c) => c.id));
   // Business contacts never get a job, even if the sorter slips.
-  const contactIds = new Set((clients ?? []).filter((c) => c.kind === "contact").map((c) => c.id));
+  const contactRows = (clients ?? []).filter((c) => c.kind === "contact");
+  const contactIds = new Set(contactRows.map((c) => c.id));
   const jobIds = new Set((jobs ?? []).map((j) => j.id));
 
   const anthropic = new Anthropic({ apiKey });
@@ -237,12 +239,21 @@ export async function POST(request: NextRequest) {
   });
 
   const rows = sorted.map((card, position) => {
-    const clientId =
+    let clientId =
       card.client_id &&
       clientIds.has(card.client_id) &&
       !(card.type === "job" && contactIds.has(card.client_id))
         ? card.client_id
         : null;
+    // The AI sometimes forgets to link "my accountant": if the card's own words name exactly one
+    // business contact, link it.
+    if (
+      !clientId &&
+      card.client_options.length === 0 &&
+      ["todo", "followup", "calendar", "note"].includes(card.type)
+    ) {
+      clientId = matchContact(`${card.title} ${card.notes ?? ""}`, contactRows);
+    }
     const options = clientId
       ? []
       : card.client_options.filter((id) => clientIds.has(id));

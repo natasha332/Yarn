@@ -108,6 +108,12 @@ async function record(p) {
   await say('CONTACTJOB'); await record(p); await p.waitForSelector('text=To check (1)', { timeout: 20000 });
   ok('even if the sorter slips, the job shows no client chosen', (await p.innerText('main')).includes('Client: not chosen yet'));
 
+  console.log('10b. The AI forgot to link "the accountant": Yarn links it from the card\'s own words');
+  await post('/__reset'); await post('/__contacts', [SAM, KIM]);
+  await p.goto('http://localhost:3000/'); await p.waitForSelector('button[aria-label="Start recording"]');
+  await say('FORGOTLINK'); await record(p); await p.waitForSelector('text=To check (1)', { timeout: 20000 });
+  ok('the to-do shows Business contact: Sam Lee · Accountant', (await p.innerText('main')).includes('Business contact: Sam Lee · Accountant'));
+
   console.log('11. Someone not in the list (a rep) just becomes a to-do');
   await post('/__reset'); await post('/__contacts', [SAM, KIM]);
   await p.goto('http://localhost:3000/'); await p.waitForSelector('button[aria-label="Start recording"]');

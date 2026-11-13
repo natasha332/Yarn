@@ -167,6 +167,7 @@ http.createServer(async (req, res) => {
     else if (/CONTACTEMAIL/.test(note)) cards = [card({ type: 'email', title: 'Email Sam', client_id: 'cl-sam', email_kind: 'other', email_subject: 'BAS', email_body: 'Can we go over the BAS this week?' })];
     else if (/CONTACTMEET/.test(note)) cards = [card({ type: 'calendar', title: 'Meeting with Kim', client_id: 'cl-kim', date: '2026-11-12', start_time: '10:00' })];
     else if (/CONTACTJOB/.test(note)) cards = [card({ type: 'job', title: 'Consultation', job_status: 'consultation', client_id: 'cl-sam' })];
+    else if (/FORGOTLINK/.test(note)) cards = [card({ type: 'todo', title: 'Email the accountant about the BAS', date: '2026-11-12' })];
     else if (/UNKNOWNREP/.test(note)) cards = [card({ type: 'todo', title: 'Meet the Hafele rep', date: '2026-11-12' })];
     else if (/EMAILROBYN/.test(note)) cards = [card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'other', email_subject: 'Quote ready', email_body: "Your quote is ready. I'll drop it round on Friday." })];
     else if (/EMAILDAVE/.test(note)) cards = [card({ type: 'email', title: 'Email Dave', client_id: 'cl-dave', email_kind: 'other', email_subject: 'Quick question', email_body: 'Can you confirm the colour you picked?' })];
