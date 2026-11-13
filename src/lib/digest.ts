@@ -3,6 +3,7 @@ import { addDays, dateIn } from "@/lib/format";
 import { googleConfig, refreshAccessToken } from "@/lib/google";
 import { listEvents, worthListing } from "@/lib/google-calendar";
 import { decryptToken } from "@/lib/token-crypto";
+import { personLabel } from "@/lib/people";
 
 // Everything the morning briefing and the day wrap-up need to say, gathered for one business.
 // Works with whichever database connection it is given (her own login, for the test button).
@@ -28,8 +29,12 @@ export type Digest = {
   waiting: number; // cards still to check
 };
 
-type One = { name: string } | { name: string }[] | null;
+type One =
+  | { name: string; kind?: string | null; role?: string | null }
+  | { name: string; kind?: string | null; role?: string | null }[]
+  | null;
 const nameOf = (v: One) => (Array.isArray(v) ? v[0]?.name : v?.name) ?? null;
+const whoOf = (v: One) => personLabel(Array.isArray(v) ? v[0] : v);
 
 type Row = {
   id: string;
@@ -51,7 +56,7 @@ const toItem = (r: Row): DigestItem => ({
   date: r.due_date,
   start: r.start_time?.slice(0, 5) ?? null,
   end: r.end_time?.slice(0, 5) ?? null,
-  who: [nameOf(r.clients), nameOf(r.jobs)].filter(Boolean).join(" · "),
+  who: [whoOf(r.clients), nameOf(r.jobs)].filter(Boolean).join(" · "),
   address: r.details?.address ?? null,
 });
 
@@ -60,7 +65,7 @@ const byWhen = (a: DigestItem, b: DigestItem) =>
   (a.start ?? "").localeCompare(b.start ?? "");
 
 const SELECT =
-  "id, type, title, due_date, start_time, end_time, external_id, details, clients(name), jobs(name)";
+  "id, type, title, due_date, start_time, end_time, external_id, details, clients(name, kind, role), jobs(name)";
 
 const hhmmIn = (timeZone: string, moment: Date) => {
   const parts = new Intl.DateTimeFormat("en-GB", {

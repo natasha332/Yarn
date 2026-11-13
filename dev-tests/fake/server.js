@@ -18,6 +18,7 @@ function seed() {
 seed();
 const clients = [{ id: 'cl-robyn', name: 'Robyn Clarke', aliases: ['Robyn', 'Rob'], address: '14 Elm St', email: 'robyn@example.com' }, { id: 'cl-dave', name: 'Dave Nguyen', aliases: [], address: null, email: null }];
 
+const people = () => [...clients, ...(state.contactRows || [])].map(c => ({ kind: 'client', role: null, ...c }));
 http.createServer(async (req, res) => {
   const chunks = []; for await (const c of req) chunks.push(c);
   const raw = Buffer.concat(chunks);
@@ -45,10 +46,16 @@ http.createServer(async (req, res) => {
   if (p === '/__bizreset') { state.bizSettings = {}; state.bizPatches = []; state.bizFail = false; return json(200, {}); }
   if (p === '/__bizfail') { state.bizFail = true; return json(200, {}); }
   if (p === '/rest/v1/businesses') { const row = { morning_enabled: true, morning_email_time: '07:00:00', wrapup_mode: 'end_of_day', wrapup_time: '17:00:00', notify_channel: 'email', ...BIZ, ...(state.bizSettings || {}) }; return json(200, wantsObject ? row : [row]); }
-  if (p === '/rest/v1/clients' && req.method === 'PATCH') { const id = (url.searchParams.get('id') || '').replace('eq.', ''); const c = clients.find(x => x.id === id); const patch = JSON.parse(raw.toString()); state.clientPatches = (state.clientPatches || []).concat([{ id, ...patch }]); if (c) Object.assign(c, patch); res.writeHead(204); return res.end(); }
+  if (p === '/rest/v1/clients' && req.method === 'PATCH') { const id = (url.searchParams.get('id') || '').replace('eq.', ''); const c = [...clients, ...(state.contactRows || [])].find(x => x.id === id); const patch = JSON.parse(raw.toString()); state.clientPatches = (state.clientPatches || []).concat([{ id, ...patch }]); if (c) Object.assign(c, patch); res.writeHead(204); return res.end(); }
   if (p === '/__clientpatches') return json(200, state.clientPatches || []);
-  if (p === '/rest/v1/clients' && url.searchParams.get('id')) { const c = clients.find(x => x.id === url.searchParams.get('id').replace('eq.', '')); return c ? json(200, wantsObject ? c : [c]) : wantsObject ? json(406, { code: 'PGRST116', message: 'no rows' }) : json(200, []); }
-  if (p === '/rest/v1/clients') return json(200, clients);
+  if (p === '/__contacts') { state.contactRows = JSON.parse(raw.toString() || '[]'); state.clientInserts = []; state.clientDeletes = []; state.jobCounts = {}; return json(200, {}); }
+  if (p === '/__jobcounts') { state.jobCounts = JSON.parse(raw.toString() || '{}'); return json(200, {}); }
+  if (p === '/__clientlog') return json(200, { inserts: state.clientInserts || [], deletes: state.clientDeletes || [] });
+  if (p === '/rest/v1/clients' && req.method === 'POST') { const row = JSON.parse(raw.toString()); state.contactRows = state.contactRows || []; const made = { id: 'cl-made-' + (state.contactRows.length + 1), aliases: [], ...row }; state.contactRows.push(made); state.clientInserts = (state.clientInserts || []).concat([row]); res.writeHead(201); return res.end(); }
+  if (p === '/rest/v1/clients' && req.method === 'DELETE') { const id = (url.searchParams.get('id') || '').replace('eq.', ''); state.clientDeletes = (state.clientDeletes || []).concat([id]); state.contactRows = (state.contactRows || []).filter(x => x.id !== id); res.writeHead(204); return res.end(); }
+  if (p === '/rest/v1/clients' && url.searchParams.get('id')) { const c = people().find(x => x.id === url.searchParams.get('id').replace('eq.', '')); return c ? json(200, wantsObject ? c : [c]) : wantsObject ? json(406, { code: 'PGRST116', message: 'no rows' }) : json(200, []); }
+  if (p === '/rest/v1/clients') { const kind = (url.searchParams.get('kind') || '').replace('eq.', ''); return json(200, people().filter(c => !kind || c.kind === kind).sort((a, b) => a.name.localeCompare(b.name))); }
+  if (p === '/rest/v1/jobs' && req.method === 'HEAD') { const n = (state.jobCounts || {})[(url.searchParams.get('client_id') || '').replace('eq.', '')] || 0; res.writeHead(200, { 'content-range': n ? `0-${n - 1}/${n}` : '*/0' }); return res.end(); }
   if (p === '/rest/v1/jobs') return json(200, []);
   if (p === '/rest/v1/items' && req.method === 'HEAD') {
     const rawStatus = url.searchParams.get('status') || ''; const want = rawStatus.replace('eq.', '');
@@ -73,8 +80,8 @@ http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.searchParams.get('id') && !url.searchParams.get('id').startsWith('in.(')) {
       const one = state.items.find(i => i.id === url.searchParams.get('id').replace('eq.', ''));
       if (!one) return wantsObject ? json(406, { code: 'PGRST116', message: 'no rows' }) : json(200, []);
-      const allC = [...clients, ...state.madeClients];
-      const row = { ...one, clients: (c => c ? { name: c.name, email: c.email ?? null } : one.client_name ? { name: one.client_name, email: null } : null)(allC.find(c => c.id === one.client_id)), jobs: one.job_name ? { name: one.job_name } : null };
+      const allC = [...people(), ...state.madeClients];
+      const row = { ...one, clients: (c => c ? { name: c.name, email: c.email ?? null, kind: c.kind || 'client', role: c.role ?? null } : one.client_name ? { name: one.client_name, email: null } : null)(allC.find(c => c.id === one.client_id)), jobs: one.job_name ? { name: one.job_name } : null };
       return json(200, wantsObject ? row : [row]);
     }
     if (req.method === 'GET') {
@@ -86,9 +93,9 @@ http.createServer(async (req, res) => {
       const dueGte = (dueFilters.find(f => f.startsWith('gte.')) || '').slice(4);
       const dueLte = (dueFilters.find(f => f.startsWith('lte.')) || '').slice(4);
       const skipCapture = (orParam.match(/capture_id\.neq\.([^,)]+)/) || [])[1];
-      const allClients = [...clients, ...state.madeClients];
+      const allClients = [...people(), ...state.madeClients];
       const rows = state.items.filter(i => (!wanted.length || wanted.includes(i.status)) && !(skipCapture && i.capture_id === skipCapture) && (!typeWanted || i.type === typeWanted) && (!dueGte || (i.due_date && i.due_date >= dueGte)) && (!dueLte || (i.due_date && i.due_date <= dueLte))).sort((a, b) => b.created_at.localeCompare(a.created_at) || a.position - b.position)
-        .map(i => ({ ...i, captures: i.capture_id && state.captures[i.capture_id] ? { created_at: state.captures[i.capture_id].created_at } : null, clients: (c => c ? { name: c.name, email: c.email ?? null } : i.client_name ? { name: i.client_name, email: null } : null)(allClients.find(c => c.id === i.client_id)), jobs: i.job_name ? { name: i.job_name } : null }));
+        .map(i => ({ ...i, captures: i.capture_id && state.captures[i.capture_id] ? { created_at: state.captures[i.capture_id].created_at } : null, clients: (c => c ? { name: c.name, email: c.email ?? null, kind: c.kind || 'client', role: c.role ?? null } : i.client_name ? { name: i.client_name, email: null } : null)(allClients.find(c => c.id === i.client_id)), jobs: i.job_name ? { name: i.job_name } : null }));
       return json(200, rows);
     }
   }
@@ -157,6 +164,10 @@ http.createServer(async (req, res) => {
     else if (/REPLYDAVE/.test(note)) cards = [card({ type: 'email', title: 'Email Dave', client_id: 'cl-dave', email_kind: 'reply', email_body: 'Yes, the grey one is fine', email_subject: /INVOICE/.test(note) ? 'invoice' : '' })];
     else if (/MOVETELL/.test(note)) cards = [card({ type: 'reschedule', title: 'Move Site visit', target_booking_id: bk('Site visit').id, date: '2026-11-12', start_time: '09:00' }), card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'reschedule', goes_with_card: 0, email_note: "It's because of a supplier delay." })];
     else if (/CANCELTELL/.test(note)) cards = [card({ type: 'cancel', title: 'Cancel Site visit', target_booking_id: bk('Site visit').id }), card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'cancel', goes_with_card: 0, email_note: "I've come down with the flu." })];
+    else if (/CONTACTEMAIL/.test(note)) cards = [card({ type: 'email', title: 'Email Sam', client_id: 'cl-sam', email_kind: 'other', email_subject: 'BAS', email_body: 'Can we go over the BAS this week?' })];
+    else if (/CONTACTMEET/.test(note)) cards = [card({ type: 'calendar', title: 'Meeting with Kim', client_id: 'cl-kim', date: '2026-11-12', start_time: '10:00' })];
+    else if (/CONTACTJOB/.test(note)) cards = [card({ type: 'job', title: 'Consultation', job_status: 'consultation', client_id: 'cl-sam' })];
+    else if (/UNKNOWNREP/.test(note)) cards = [card({ type: 'todo', title: 'Meet the Hafele rep', date: '2026-11-12' })];
     else if (/EMAILROBYN/.test(note)) cards = [card({ type: 'email', title: 'Email Robyn', client_id: 'cl-robyn', email_kind: 'other', email_subject: 'Quote ready', email_body: "Your quote is ready. I'll drop it round on Friday." })];
     else if (/EMAILDAVE/.test(note)) cards = [card({ type: 'email', title: 'Email Dave', client_id: 'cl-dave', email_kind: 'other', email_subject: 'Quick question', email_body: 'Can you confirm the colour you picked?' })];
     else if (/MOVEPRIYA/.test(note)) cards = [card({ type: 'reschedule', title: "Move Consult at Priya's", target_booking_id: bk('Priya').id, date: '2026-11-12', start_time: '14:00', end_time: '15:00' })];

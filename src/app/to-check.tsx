@@ -11,7 +11,7 @@ export default async function ToCheck() {
   const { data: items } = await supabase
     .from("items")
     .select(
-      "id, capture_id, type, title, client_id, job_id, due_date, start_time, end_time, details, position, created_at, captures(created_at), clients(name)",
+      "id, capture_id, type, title, client_id, job_id, due_date, start_time, end_time, details, position, created_at, captures(created_at), clients(name, kind, role)",
     )
     .eq("status", "pending")
     .order("created_at", { ascending: false })
@@ -36,6 +36,8 @@ export default async function ToCheck() {
       title: raw.title,
       client_id: raw.client_id,
       client_name: client?.name ?? null,
+      client_kind: client?.kind ?? null,
+      client_role: client?.role ?? null,
       due_date: raw.due_date,
       start_time: raw.start_time,
       end_time: raw.end_time,

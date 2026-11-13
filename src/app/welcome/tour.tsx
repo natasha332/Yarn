@@ -114,6 +114,7 @@ const SLIDES: Slide[] = [
     title: "Emails, written for you.",
     lead: "Tell Yarn who to email and what to say. It writes it, you read it, you tap Send.",
     points: [
+      "Keep your accountant, suppliers and reps under Contacts, in Business contacts, and “email my accountant” just works.",
       "Moved or cancelled a booking? Yarn offers a “let her know” email.",
       "Connect Gmail (optional) and “reply to Robyn” is saved as a draft in the same email thread. Yarn never sends from your Gmail.",
     ],

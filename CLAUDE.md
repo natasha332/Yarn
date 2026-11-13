@@ -39,7 +39,7 @@ Natasha is building this herself with Claude Code and is not a professional deve
 
 - **businesses**: id, name, timezone, morning_enabled, morning_email_time, wrapup_mode (end_of_day, off), wrapup_time, notify_channel (email, push, both), push_subscription, google_calendar_id, email_from_name, email_reply_to, email_sign_off, plan (base, accounting, quoting), trial_ends_at
 - **users**: id, business_id, name, email, role (owner only for the MVP)
-- **clients**: id, business_id, name, phone, email, address, aliases
+- **clients** (shown in the app as **Contacts**): id, business_id, name, phone, email, address, aliases, kind (`client` = a customer, `contact` = a business contact such as an accountant, supplier or sales rep), role (a contact's label, e.g. "Accountant"). Business contacts can have bookings, to-dos and emails but never jobs (a trigger enforces it); the sorter gets both kinds in one list and never makes a job or new client for a contact
 - **jobs**: id, business_id, client_id, name, address, status (consultation, quoted, booked, in_progress, done; shown as "Consultation", "Quoted", "Booked job", "Job in progress", "Done")
 - **captures**: id, business_id, user_id, audio_url, transcript, created_at, status (recorded, transcribed, sorted, failed)
 - **items**: id, capture_id, business_id, type (calendar, todo, followup, note, job, invoice, quote, variation, reschedule, cancel, email), title, client_id, job_id, due_date, start_time, end_time, details (JSON), status (pending, confirmed, discarded, done), external_id (the Google event id), position, done_at (set automatically when ticked off). A cancelled booking is kept as `discarded` with `details.cancelled_at`. `details.calendar_sync` ('needs_update' / 'needs_delete') marks a booking whose Google event still has to follow a move or cancel. An `email` card holds `details.email` {to, subject, body, kind}; it can only be sent through `/api/email/send` (`confirm_item` refuses emails)
@@ -77,7 +77,7 @@ Not in the MVP: crew logins, accounting integrations, quoting, SMS, reading a tr
 
 Done since: "Open in my email app" on Email cards, a hidden copy of every client email plus a Sent emails list, and the Gmail reply pilot.
 
-Also done: push notifications, failure alerts (`ALERT_EMAIL`, `/api/health` + `HEALTH_TOKEN`), the move to `app.letsyarn.com.au` (mail from `mail.letsyarn.com.au`), and a "How Yarn works" tour (`/welcome`, shown after setup and linked from Settings).
+Also done: push notifications, failure alerts (`ALERT_EMAIL`, `/api/health` + `HEALTH_TOKEN`), the move to `app.letsyarn.com.au` (mail from `mail.letsyarn.com.au`), and a "How Yarn works" tour (`/welcome`, shown after setup and linked from Settings), and Business contacts (Contacts tab with a Clients | Business contacts switch; roles show on Today and cards).
 
 Still to do: an "Emails waiting for a reply" section in the briefing (needs Gmail); for other customers, Google's verification of the app (the Google project is Internal to one Workspace for now) and a decision on the Gmail security assessment.
 

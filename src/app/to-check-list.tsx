@@ -666,7 +666,11 @@ function CardView({
         </p>
       )}
       {card.type !== "job" && !isChange && card.client_name && (
-        <p className="text-muted">Client: {card.client_name}</p>
+        <p className="text-muted">
+          {card.client_kind === "contact"
+            ? `Business contact: ${card.client_name}${card.client_role ? ` · ${card.client_role}` : ""}`
+            : `Client: ${card.client_name}`}
+        </p>
       )}
       {when && !isChange && (
         <p className="font-mono text-sm text-muted">{when}</p>

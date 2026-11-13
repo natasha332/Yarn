@@ -10,6 +10,7 @@ async function Form() {
   const { data: clients } = await supabase
     .from("clients")
     .select("id, name, address")
+    .eq("kind", "client")
     .order("name");
   return <NewJobForm clients={clients ?? []} />;
 }
@@ -17,7 +18,10 @@ async function Form() {
 export default function NewJobPage() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-5 p-4">
-      <Link href="/jobs" className="flex h-12 items-center text-muted underline">
+      <Link
+        href="/jobs"
+        className="flex h-12 items-center text-muted underline"
+      >
         ← Jobs
       </Link>
       <h1 className="font-display text-5xl font-bold leading-none">New job</h1>

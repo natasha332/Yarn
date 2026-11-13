@@ -12,6 +12,7 @@ import {
 } from "@/lib/format";
 import { otherCalendarEvents, type DigestItem } from "@/lib/digest";
 import { createClient } from "@/lib/supabase/server";
+import { personLabel } from "@/lib/people";
 import BookingActions from "./booking-actions";
 import GoogleStatus from "./google-status";
 import TickButton from "./tick-button";
@@ -31,8 +32,13 @@ type Row = {
     calendar_sync?: string | null;
   } | null;
   clients:
-    | { name: string; email: string | null }
-    | { name: string; email: string | null }[]
+    | { name: string; email: string | null; kind: string; role: string | null }
+    | {
+        name: string;
+        email: string | null;
+        kind: string;
+        role: string | null;
+      }[]
     | null;
   jobs: { name: string } | { name: string }[] | null;
 };
@@ -124,7 +130,7 @@ async function TodayContent() {
       supabase
         .from("items")
         .select(
-          "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name, email), jobs(name)",
+          "id, type, title, due_date, start_time, end_time, created_at, external_id, details, clients(name, email, kind, role), jobs(name)",
         )
         .eq("status", "confirmed")
         .order("created_at", { ascending: false })
@@ -208,7 +214,9 @@ async function TodayContent() {
       : ("missing" as const);
 
   const who = (r: Row) =>
-    [one(r.clients)?.name, one(r.jobs)?.name].filter(Boolean).join(" · ");
+    [personLabel(one(r.clients)), one(r.jobs)?.name]
+      .filter(Boolean)
+      .join(" · ");
 
   return (
     <>

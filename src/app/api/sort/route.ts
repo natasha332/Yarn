@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
   const [{ data: clients }, { data: jobs }] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, name, aliases, address, email")
+      .select("id, name, aliases, address, email, kind, role")
       .order("name")
       .limit(300),
     supabase
@@ -165,6 +165,8 @@ export async function POST(request: NextRequest) {
     (pastNotes ?? []).filter((n) => n.id !== captureId),
   );
   const clientIds = new Set((clients ?? []).map((c) => c.id));
+  // Business contacts never get a job, even if the sorter slips.
+  const contactIds = new Set((clients ?? []).filter((c) => c.kind === "contact").map((c) => c.id));
   const jobIds = new Set((jobs ?? []).map((j) => j.id));
 
   const anthropic = new Anthropic({ apiKey });
@@ -179,7 +181,7 @@ export async function POST(request: NextRequest) {
           role: "user",
           content:
             `TODAY: ${todayIn(business.timezone)} (timezone ${business.timezone})\n\n` +
-            `CLIENTS (JSON):\n${JSON.stringify((clients ?? []).map(({ id, name, aliases, address }) => ({ id, name, aliases, address })))}\n\n` +
+            `PEOPLE (JSON; kind is client or contact):\n${JSON.stringify((clients ?? []).map(({ id, name, aliases, address, kind, role }) => ({ id, name, kind, ...(kind === "contact" ? { role } : { address }), aliases })))}\n\n` +
             `OPEN JOBS (JSON):\n${JSON.stringify(jobs ?? [])}\n\n` +
             `UPCOMING BOOKINGS (JSON):\n${JSON.stringify(bookings.map(({ clientId, ...b }) => { void clientId; return b; }))}\n\n` +
             `VOICE NOTE:\n${capture.transcript}`,
@@ -236,7 +238,11 @@ export async function POST(request: NextRequest) {
 
   const rows = sorted.map((card, position) => {
     const clientId =
-      card.client_id && clientIds.has(card.client_id) ? card.client_id : null;
+      card.client_id &&
+      clientIds.has(card.client_id) &&
+      !(card.type === "job" && contactIds.has(card.client_id))
+        ? card.client_id
+        : null;
     const options = clientId
       ? []
       : card.client_options.filter((id) => clientIds.has(id));

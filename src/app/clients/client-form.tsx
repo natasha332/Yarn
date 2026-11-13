@@ -11,6 +11,8 @@ export type ClientRow = {
   email: string | null;
   address: string | null;
   aliases: string[];
+  kind: "client" | "contact";
+  role: string | null;
 };
 
 const inputClass =
@@ -19,9 +21,13 @@ const inputClass =
 export default function ClientForm({
   businessId,
   client,
+  initialKind = "client",
+  hasJobs = false,
 }: {
   businessId: string;
   client?: ClientRow;
+  initialKind?: "client" | "contact";
+  hasJobs?: boolean; // a client with jobs stays a client
 }) {
   const router = useRouter();
   const [name, setName] = useState(client?.name ?? "");
@@ -29,11 +35,16 @@ export default function ClientForm({
   const [email, setEmail] = useState(client?.email ?? "");
   const [address, setAddress] = useState(client?.address ?? "");
   const [aliases, setAliases] = useState((client?.aliases ?? []).join(", "));
+  const [kind, setKind] = useState<"client" | "contact">(
+    client?.kind ?? initialKind,
+  );
+  const [role, setRole] = useState(client?.role ?? "");
+  const contact = kind === "contact";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function done() {
-    router.push("/clients");
+    router.push(contact ? "/clients?kind=contact" : "/clients");
     router.refresh();
   }
 
@@ -46,7 +57,10 @@ export default function ClientForm({
       name: name.trim(),
       phone: phone.trim() || null,
       email: email.trim() || null,
-      address: address.trim() || null,
+      // Business contacts don't get an address or a role-less label: keep whatever was there.
+      ...(contact ? {} : { address: address.trim() || null }),
+      kind,
+      role: contact ? role.trim().slice(0, 60) || null : null,
       aliases: aliases
         .split(",")
         .map((a) => a.trim())
@@ -56,7 +70,9 @@ export default function ClientForm({
     const supabase = createClient();
     const { error } = client
       ? await supabase.from("clients").update(values).eq("id", client.id)
-      : await supabase.from("clients").insert({ ...values, business_id: businessId });
+      : await supabase
+          .from("clients")
+          .insert({ ...values, business_id: businessId });
 
     if (error) {
       setError(error.message);
@@ -69,14 +85,19 @@ export default function ClientForm({
   async function onDelete() {
     if (!client) return;
     const ok = window.confirm(
-      `Delete ${client.name}? Their jobs stay, but won't be linked to anyone.`,
+      contact
+        ? `Delete ${client.name}?`
+        : `Delete ${client.name}? Their jobs stay, but won't be linked to anyone.`,
     );
     if (!ok) return;
 
     setBusy(true);
     setError(null);
     const supabase = createClient();
-    const { error } = await supabase.from("clients").delete().eq("id", client.id);
+    const { error } = await supabase
+      .from("clients")
+      .delete()
+      .eq("id", client.id);
     if (error) {
       setError(error.message);
       setBusy(false);
@@ -87,6 +108,36 @@ export default function ClientForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      {hasJobs ? (
+        <p className="text-sm text-muted">
+          This client has jobs, so they stay a client.
+        </p>
+      ) : (
+        <div
+          role="group"
+          aria-label="Client or business contact"
+          className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-sunk p-1"
+        >
+          {(
+            [
+              ["client", "Client"],
+              ["contact", "Business contact"],
+            ] as const
+          ).map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={kind === value}
+              onClick={() => setKind(value)}
+              className={`h-11 rounded-lg font-semibold ${
+                kind === value ? "bg-surface text-ink shadow-sm" : "text-muted"
+              }`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
       <label className="flex flex-col gap-1 font-semibold">
         Name
         <input
@@ -98,6 +149,22 @@ export default function ClientForm({
           className={inputClass}
         />
       </label>
+      {contact && (
+        <label className="flex flex-col gap-1 font-semibold">
+          Role
+          <input
+            maxLength={60}
+            autoComplete="off"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            placeholder="e.g. Accountant, Timber supplier, Sales rep"
+            className={inputClass}
+          />
+          <span className="text-sm font-normal text-muted">
+            What they are to you. Shown next to their name.
+          </span>
+        </label>
+      )}
       <label className="flex flex-col gap-1 font-semibold">
         Phone
         <input
@@ -118,22 +185,26 @@ export default function ClientForm({
           className={inputClass}
         />
       </label>
-      <label className="flex flex-col gap-1 font-semibold">
-        Address
-        <input
-          autoComplete="off"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          className={inputClass}
-        />
-      </label>
+      {!contact && (
+        <label className="flex flex-col gap-1 font-semibold">
+          Address
+          <input
+            autoComplete="off"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            className={inputClass}
+          />
+        </label>
+      )}
       <label className="flex flex-col gap-1 font-semibold">
         Nicknames
         <input
           autoComplete="off"
           value={aliases}
           onChange={(e) => setAliases(e.target.value)}
-          placeholder="e.g. Robyn, Rob, Mrs Clarke"
+          placeholder={
+            contact ? "e.g. my accountant, Sam" : "e.g. Robyn, Rob, Mrs Clarke"
+          }
           className={inputClass}
         />
         <span className="text-sm font-normal text-muted">
@@ -152,7 +223,13 @@ export default function ClientForm({
         disabled={busy}
         className="h-14 rounded-xl bg-accent text-lg font-semibold text-accent-ink disabled:opacity-50"
       >
-        {busy ? "One sec…" : client ? "Save changes" : "Add client"}
+        {busy
+          ? "One sec…"
+          : client
+            ? "Save changes"
+            : contact
+              ? "Add business contact"
+              : "Add client"}
       </button>
 
       {client && (
@@ -162,7 +239,7 @@ export default function ClientForm({
           disabled={busy}
           className="h-14 rounded-xl border border-line bg-surface text-lg font-semibold text-variation disabled:opacity-50"
         >
-          Delete client
+          {contact ? "Delete business contact" : "Delete client"}
         </button>
       )}
     </form>

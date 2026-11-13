@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// The menu bar along the bottom of the screen (Talk, Today, Jobs, Clients).
+// The menu bar along the bottom of the screen (Talk, Today, Jobs, Contacts).
 // It isn't shown on the sign-in and setup screens.
 const HIDDEN_ON = [
   "/login",
@@ -58,7 +58,7 @@ const TABS = [
   },
   {
     href: "/clients",
-    label: "Clients",
+    label: "Contacts",
     match: (p: string) => p.startsWith("/clients"),
     svg: (
       <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true" {...icon}>

@@ -58,14 +58,26 @@ export type CardDetails = {
   duplicate_of?: DuplicateOf | null;
   // "email" cards: what will be sent, and (when it tells a client about a move or cancel
   // made in the same note) the card that has to be confirmed first.
-  email?: { to: string | null; subject: string; body: string; kind: "reschedule" | "cancel" | "other" | "reply" } | null;
+  email?: {
+    to: string | null;
+    subject: string;
+    body: string;
+    kind: "reschedule" | "cancel" | "other" | "reply";
+  } | null;
   // "reply to ..." cards: finding the email in Gmail and the reply written from it
   gmail?: {
     state: "lookup" | "choose" | "ready" | "none" | "error";
     instruction: string;
     hint: string;
     message?: string;
-    candidates?: { threadId: string; fromName: string; fromAddress: string; subject: string; date: string; snippet: string }[];
+    candidates?: {
+      threadId: string;
+      fromName: string;
+      fromAddress: string;
+      subject: string;
+      date: string;
+      snippet: string;
+    }[];
     thread_id?: string;
     subject?: string;
     draft_id?: string;
@@ -83,6 +95,8 @@ export type PendingCard = {
   title: string;
   client_id: string | null;
   client_name: string | null;
+  client_kind?: string | null; // "client" or "contact" (a business contact)
+  client_role?: string | null; // a contact's role, like "Accountant"
   due_date: string | null;
   start_time: string | null;
   end_time: string | null;
